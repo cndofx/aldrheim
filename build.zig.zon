@@ -1,0 +1,28 @@
+.{
+    .name = .aldrheim,
+    .version = "0.0.0",
+    .fingerprint = 0x12b0bc12be1e1f94, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .sdl3 = .{
+            .url = "https://github.com/Gota7/zig-sdl3/archive/refs/tags/v0.1.1.tar.gz",
+            .hash = "sdl3-0.1.1-NmT1QwTgIADixpCS2g5pBBON5AEfnjOox94dU0dtT-tq",
+        },
+
+        // .wgpu_native_zig = .{
+        //     .url = "https://github.com/bronter/wgpu_native_zig/archive/refs/tags/v6.5.0.tar.gz",
+        //     .hash = "wgpu_native_zig-6.5.0-B9jeDFtzAwB1vPOiXTd2BqrP1j4phYk-oBbxbpLKY3xD",
+        // },
+
+        // https://github.com/bronter/wgpu_native_zig/pull/37
+        // .wgpu_native_zig = .{
+        //     .url = "git+https://github.com/bronter/wgpu_native_zig#12533f6899dc8d8b7b159d47acfa4dd9cb766930",
+        //     .hash = "wgpu_native_zig-6.5.0-B9jeDGhzAwDKk_uGG5fG5vO7uzmzwj-EQ-DLrmR2wpdK",
+        // },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

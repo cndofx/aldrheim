@@ -1,0 +1,33 @@
+r0: u32,
+r1: u32,
+r2: u32,
+main_elements: u16,
+header_read: i32,
+block_kind: BlockKind,
+block_length: u32,
+block_remaining: u32,
+frames_read: u32,
+intel_filesize: i32,
+intel_curpos: i32,
+intel_started: i32,
+
+pretree_table: []u16,
+pretree_len: []u8,
+maintree_table: []u16,
+maintree_len: []u8,
+length_table: []u16,
+length_len: []u8,
+aligned_table: []u16,
+aligned_len: []u8,
+
+actual_size: u32,
+window: []u8,
+window_size: u32,
+window_posn: u32,
+
+const BlockKind = enum(u8) {
+    invalid = 0,
+    verbatim = 1,
+    aligned = 2,
+    uncompressed = 3,
+};

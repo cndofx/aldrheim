@@ -20,6 +20,22 @@ pub fn u32FromBytes(bytes: [4]u8, endian: Endian) u32 {
     return num;
 }
 
+pub fn i32FromBytes(bytes: [4]u8, endian: Endian) i32 {
+    var num: i32 = @bitCast(bytes);
+    if (native_endian != endian) {
+        num = @byteSwap(num);
+    }
+    return num;
+}
+
+pub fn u64FromBytes(bytes: [8]u8, endian: Endian) u64 {
+    var num: u64 = @bitCast(bytes);
+    if (native_endian != endian) {
+        num = @byteSwap(num);
+    }
+    return num;
+}
+
 pub fn bytesFromU16(value: u16, endian: Endian) [2]u8 {
     var v = value;
     if (native_endian != endian) {
@@ -54,6 +70,12 @@ pub fn readU32(reader: *std.Io.Reader, endian: Endian) !u32 {
     return u32FromBytes(buf, endian);
 }
 
+pub fn readI32(reader: *std.Io.Reader, endian: Endian) !i32 {
+    var buf: [4]u8 = undefined;
+    try reader.readSliceAll(&buf);
+    return i32FromBytes(buf, endian);
+}
+
 pub fn read7BitEncodedI32(reader: *std.Io.Reader) !i32 {
     var result: i32 = 0;
     var bits_read: u5 = 0;
@@ -69,4 +91,12 @@ pub fn read7BitEncodedI32(reader: *std.Io.Reader) !i32 {
     }
 
     return result;
+}
+
+/// result must be freed
+pub fn read7BitLengthString(reader: *std.Io.Reader, gpa: std.mem.Allocator) ![]u8 {
+    const len = try read7BitEncodedI32(reader);
+    const s = try gpa.alloc(u8, @intCast(len));
+    try reader.readSliceAll(s);
+    return s;
 }

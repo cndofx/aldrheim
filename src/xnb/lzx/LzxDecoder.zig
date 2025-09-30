@@ -3,6 +3,7 @@
 
 // other references:
 // https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-patch/cc78752a-b4af-4eee-88cb-01f4d8a4c2bf
+// https://github.com/kyz/libmspack
 // https://github.com/LeonBlade/xnbcli
 // https://github.com/Lonami/lzxd
 
@@ -37,21 +38,21 @@ const lentable_safety = 64;
 
 state: LzxState,
 
-pub fn init(gpa: std.mem.Allocator, window_size_pow2: u5) !LzxDecoder {
-    if (window_size_pow2 < 15 or window_size_pow2 > 21) {
+pub fn init(gpa: std.mem.Allocator, window_bits: u5) !LzxDecoder {
+    if (window_bits < 15 or window_bits > 21) {
         return error.InvalidWindowSize;
     }
 
-    const wndsize = @as(u32, 1) << window_size_pow2;
+    const window_size = @as(u32, 1) << window_bits;
 
-    const posn_slots: u16 = if (window_size_pow2 == 20)
+    const posn_slots: u16 = if (window_bits == 20)
         42
-    else if (window_size_pow2 == 21)
+    else if (window_bits == 21)
         50
     else
-        @as(u16, window_size_pow2) << 1;
+        @as(u16, window_bits) << 1;
 
-    const window = try gpa.alloc(u8, wndsize);
+    const window = try gpa.alloc(u8, window_size);
     errdefer gpa.free(window);
     @memset(window, 0xDC);
 
@@ -91,8 +92,7 @@ pub fn init(gpa: std.mem.Allocator, window_size_pow2: u5) !LzxDecoder {
     return LzxDecoder{
         .state = LzxState{
             .window = window,
-            .actual_size = wndsize,
-            .window_size = wndsize,
+            .window_size = window_size,
             .window_posn = 0,
 
             .r0 = 1,
@@ -100,7 +100,6 @@ pub fn init(gpa: std.mem.Allocator, window_size_pow2: u5) !LzxDecoder {
             .r2 = 1,
             .main_elements = num_chars + (posn_slots << 3),
             .header_read = 0,
-            .frames_read = 0,
             .block_remaining = 0,
             .block_length = 0,
             .block_kind = .invalid,
@@ -181,8 +180,8 @@ pub fn decompress(self: *LzxDecoder, gpa: std.mem.Allocator, in: *std.Io.Reader,
                 if ((self.state.block_length & 1) == 1) {
                     // realign bitbuf to word
                     _ = try rh.readU8(in);
-                    bitbuf.clear();
                 }
+                bitbuf.clear();
             }
 
             self.state.block_kind = @enumFromInt(try bitbuf.readBits(3));

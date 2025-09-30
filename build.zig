@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const use_llvm = b.option(bool, "llvm", "Use LLVM") orelse false;
+    const force_llvm = b.option(bool, "llvm", "Force LLVM") orelse false;
 
     const sdl3_dep = b.dependency("sdl3", .{
         .target = target,
@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "aldrheim",
-        .use_llvm = use_llvm,
+        .use_llvm = if (force_llvm) true else null,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,

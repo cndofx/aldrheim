@@ -26,12 +26,50 @@ pub fn main() !void {
         std.debug.print("usage: aldrheim <xnb_path>\n", .{});
         std.process.exit(1);
     }
+    const in_path = args[1];
 
-    var xnb = try Xnb.initFromFile(gpa, args[1]);
+    var xnb = try Xnb.initFromFile(gpa, in_path);
     defer xnb.deinit(gpa);
 
+    // TODO: temp
+    {
+        const decompressed = try xnb.decompress(gpa);
+        defer gpa.free(decompressed);
+
+        const out_path = try std.fmt.allocPrint(gpa, "{s}.decompressed", .{in_path});
+        defer gpa.free(out_path);
+        var out_file = try std.fs.cwd().createFile(out_path, .{});
+        defer out_file.close();
+
+        var out_writer = out_file.writer(&.{});
+        const writer = &out_writer.interface;
+        try writer.writeAll(decompressed);
+        try writer.flush();
+    }
+
     var content = try xnb.parseContent(gpa);
-    defer content.deinit();
+    defer content.deinit(gpa);
+
+    if (content.primary_asset == .texture_2d) {
+        const texture = content.primary_asset.texture_2d;
+
+        const pixels = try texture.decode(gpa, 0);
+        defer gpa.free(pixels);
+
+        const out_path = try std.fmt.allocPrint(gpa, "{s}.png", .{in_path});
+        defer gpa.free(out_path);
+
+        if (c.stbi_write_png(
+            @ptrCast(out_path),
+            @intCast(texture.width),
+            @intCast(texture.height),
+            4,
+            @ptrCast(pixels),
+            @intCast(4 * texture.width),
+        ) == 0) {
+            return error.StbWritePngFailed;
+        }
+    }
 
     std.debug.print("{}\n", .{xnb.header});
 }

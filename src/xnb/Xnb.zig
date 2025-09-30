@@ -1,7 +1,8 @@
 const std = @import("std");
+const c = @import("c");
 
 const rh = @import("reader_helpers.zig");
-const XnbAsset = @import("XnbAsset.zig");
+const XnbAsset = @import("asset.zig").XnbAsset;
 const LzxDecoder = @import("lzx/LzxDecoder.zig");
 
 const Xnb = @This();
@@ -9,7 +10,7 @@ const Xnb = @This();
 header: Header,
 data: []u8,
 
-const Header = struct {
+pub const Header = struct {
     platform: Platform,
     version: Version,
     hi_def: bool,
@@ -18,19 +19,19 @@ const Header = struct {
     uncompressed_size: u32,
 };
 
-const Platform = enum {
+pub const Platform = enum {
     windows,
     windows_phone,
     xbox360,
 };
 
-const Version = enum {
+pub const Version = enum {
     xna_31,
     xna_40,
 };
 
-const Content = struct {
-    readers: []TypeReader,
+pub const Content = struct {
+    type_readers: []TypeReader,
     primary_asset: XnbAsset,
     shared_assets: []XnbAsset,
 
@@ -38,13 +39,22 @@ const Content = struct {
         return try xnb.parseContent(gpa);
     }
 
-    pub fn deinit(self: *Content) void {
-        _ = self;
-        // TODO
+    pub fn deinit(self: *Content, gpa: std.mem.Allocator) void {
+        for (self.type_readers) |reader| {
+            gpa.free(reader.name);
+        }
+        gpa.free(self.type_readers);
+
+        for (self.shared_assets) |*shared| {
+            shared.deinit(gpa);
+        }
+        gpa.free(self.shared_assets);
+
+        self.primary_asset.deinit(gpa);
     }
 };
 
-const TypeReader = struct {
+pub const TypeReader = struct {
     name: []const u8,
     version: i32,
 };
@@ -120,11 +130,6 @@ pub fn decompress(self: Xnb, gpa: std.mem.Allocator) ![]u8 {
     var lzxd = try LzxDecoder.init(gpa, 16);
     defer lzxd.deinit(gpa);
 
-    // var block_buf: ?[]u8 = null;
-    // defer if (block_buf) |b| {
-    //     gpa.free(b);
-    // };
-
     const decompressed = try gpa.alloc(u8, self.header.uncompressed_size);
     errdefer gpa.free(decompressed);
     var fixed_writer = std.Io.Writer.fixed(decompressed);
@@ -145,90 +150,49 @@ pub fn decompress(self: Xnb, gpa: std.mem.Allocator) ![]u8 {
             break;
         }
 
-        // if (block_buf != null and block_buf.?.len < block_size) {
-        //     gpa.free(block_buf.?);
-        //     block_buf = null;
-        // }
-        // if (block_buf == null) {
-        //     block_buf = try gpa.alloc(u8, block_size);
-        // }
-
-        // const block = block_buf.?[0..block_size];
-        // try reader.readSliceAll(block);
+        const pos = reader.seek;
         try lzxd.decompress(gpa, reader, block_size, writer, frame_size);
+        reader.seek = pos + block_size;
     }
     try writer.flush();
 
     return decompressed;
 }
 
-// pub fn decompress(self: Xnb, gpa: std.mem.Allocator) ![]u8 {
-//     var fixed_reader = std.Io.Reader.fixed(self.data);
-//     const reader = &fixed_reader;
-//
-//     var lzxd = try LzxDecoder.init(gpa, 16);
-//     defer lzxd.deinit(gpa);
-//
-//     var block_buf: ?[]u8 = null;
-//     defer if (block_buf) |b| {
-//         gpa.free(b);
-//     };
-//
-//     const decompressed = try gpa.alloc(u8, self.header.uncompressed_size);
-//     errdefer gpa.free(decompressed);
-//     var fixed_writer = std.Io.Writer.fixed(decompressed);
-//     const writer = &fixed_writer;
-//
-//     while (reader.seek < reader.buffer.len) {
-//         var frame_size: u16 = 0;
-//         var block_size: u16 = 0;
-//         if (try rh.readU8(reader) == 0xFF) {
-//             frame_size = try rh.readU16(reader, .big);
-//             block_size = try rh.readU16(reader, .big);
-//         } else {
-//             reader.seek -= 1;
-//             block_size = try rh.readU16(reader, .big);
-//             frame_size = 0x8000;
-//         }
-//         if (block_size == 0 or frame_size == 0) {
-//             break;
-//         }
-//
-//         if (block_buf != null and block_buf.?.len < block_size) {
-//             gpa.free(block_buf.?);
-//             block_buf = null;
-//         }
-//         if (block_buf == null) {
-//             block_buf = try gpa.alloc(u8, block_size);
-//         }
-//
-//         const block = block_buf.?[0..block_size];
-//         try reader.readSliceAll(block);
-//         try lzxd.decompress(gpa, block, writer, frame_size);
-//     }
-//     try writer.flush();
-//
-//     return decompressed;
-// }
-
 /// content must be freed
 pub fn parseContent(self: Xnb, gpa: std.mem.Allocator) !Content {
-    // var data = self.data;
-    // if (self.header.compressed) {
-    //     data = sel
-    // }
-    const data = if (self.header.compressed) try self.decompress(gpa) else self.data;
+    const data: []const u8 = if (self.header.compressed) try self.decompress(gpa) else self.data;
     defer if (self.header.compressed) {
         gpa.free(data);
     };
-    std.debug.print("{any}\n", .{data});
 
-    var fixed_reader = std.Io.Reader.fixed(self.data);
+    var fixed_reader = std.Io.Reader.fixed(data);
     const reader = &fixed_reader;
-    _ = reader;
 
-    // const type_reader_count = try rh.read7BitEncodedI32(reader);
-    // std.debug.print("type reader count: {}\n", .{type_reader_count});
+    const type_reader_count: usize = @intCast(try rh.read7BitEncodedI32(reader));
+    std.debug.print("type reader count: {}\n", .{type_reader_count});
 
-    return error.Unimplemented;
+    const type_readers = try gpa.alloc(TypeReader, @intCast(type_reader_count));
+    errdefer gpa.free(type_readers);
+    for (0..type_reader_count) |i| {
+        // TODO: name wont be freed on error
+        const name = try rh.read7BitLengthString(reader, gpa);
+        const version = try rh.readI32(reader, .little);
+        type_readers[i] = TypeReader{
+            .name = name,
+            .version = version,
+        };
+        std.debug.print("type reader: {s}\n", .{name});
+    }
+
+    const shared_asset_count = try rh.read7BitEncodedI32(reader);
+    _ = shared_asset_count;
+
+    const primary_asset = try XnbAsset.initFromReader(reader, type_readers, gpa);
+
+    return Content{
+        .type_readers = type_readers,
+        .primary_asset = primary_asset,
+        .shared_assets = &.{},
+    };
 }

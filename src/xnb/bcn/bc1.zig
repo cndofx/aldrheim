@@ -60,7 +60,7 @@ pub fn decodeBc1BlockInner(data: []const u8, out: []u32, use_alpha: bool) void {
         }).toU32Rgba();
     }
 
-    var d = rh.u32FromBytes(.{ data[4], data[5], data[6], data[7] }, .little);
+    var d = rh.u32FromBytes(data[4..8].*, .little);
     for (0..16) |i| {
         out[i] = c[d & 3];
         d >>= 2;

@@ -11,6 +11,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const matrix_dep = b.dependency("matrix", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const stb_image = b.addLibrary(.{
         .name = "stb_image",
         .linkage = .static,
@@ -43,6 +48,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "c", .module = translate_c_mod },
                 .{ .name = "sdl3", .module = sdl3_dep.module("sdl3") },
+                .{ .name = "matrix", .module = matrix_dep.module("zig_matrix") },
             },
         }),
     });

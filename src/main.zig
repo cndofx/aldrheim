@@ -56,7 +56,7 @@ pub fn main() !void {
         const pixels = try texture.decode(gpa, 0);
         defer gpa.free(pixels);
 
-        const out_path = try std.fmt.allocPrint(gpa, "{s}.png", .{in_path});
+        const out_path = try std.fmt.allocPrint(gpa, "{s}.png\x00", .{in_path});
         defer gpa.free(out_path);
 
         if (c.stbi_write_png(

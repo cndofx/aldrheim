@@ -9,6 +9,7 @@ data: []u8,
 pub fn initFromReader(reader: *std.Io.Reader, gpa: std.mem.Allocator) !VertexBuffer {
     const size = try rh.readU32(reader, .little);
     const data = try gpa.alloc(u8, size);
+    errdefer gpa.free(data);
     try reader.readSliceAll(data);
 
     return VertexBuffer{

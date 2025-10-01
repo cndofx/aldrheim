@@ -32,6 +32,24 @@ pub const Element = struct {
     usage: Usage,
     usage_index: u8,
 
+    pub fn initFromReader(reader: *std.Io.Reader) !Element {
+        const stream = try rh.readU16(reader, .little);
+        const offset = try rh.readU16(reader, .little);
+        const format: Format = @enumFromInt(try rh.readU8(reader));
+        const method: Method = @enumFromInt(try rh.readU8(reader));
+        const usage: Usage = @enumFromInt(try rh.readU8(reader));
+        const usage_index = try rh.readU8(reader);
+
+        return Element{
+            .stream = stream,
+            .offset = offset,
+            .format = format,
+            .method = method,
+            .usage = usage,
+            .usage_index = usage_index,
+        };
+    }
+
     // TODO: i dont remember where these came from
     pub const Format = enum(u8) {
         single,
@@ -60,6 +78,7 @@ pub const Element = struct {
         lookup_presampled,
     };
 
+    // TODO: i dont remember where these came from
     pub const Usage = enum(u8) {
         position,
         blend_weight,
@@ -75,22 +94,4 @@ pub const Element = struct {
         depth,
         sample,
     };
-
-    pub fn initFromReader(reader: *std.Io.Reader) !Element {
-        const stream = try rh.readU16(reader, .little);
-        const offset = try rh.readU16(reader, .little);
-        const format: Format = @enumFromInt(try rh.readU8(reader));
-        const method: Method = @enumFromInt(try rh.readU8(reader));
-        const usage: Usage = @enumFromInt(try rh.readU8(reader));
-        const usage_index = try rh.readU8(reader);
-
-        return Element{
-            .stream = stream,
-            .offset = offset,
-            .format = format,
-            .method = method,
-            .usage = usage,
-            .usage_index = usage_index,
-        };
-    }
 };

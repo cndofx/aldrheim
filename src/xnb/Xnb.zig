@@ -172,18 +172,25 @@ pub fn parseContent(self: Xnb, gpa: std.mem.Allocator) !Content {
     const type_reader_count: usize = @intCast(try rh.read7BitEncodedI32(reader));
     std.debug.print("type reader count: {}\n", .{type_reader_count});
 
-    const type_readers = try gpa.alloc(TypeReader, @intCast(type_reader_count));
-    errdefer gpa.free(type_readers);
-    for (0..type_reader_count) |i| {
-        // TODO: name wont be freed on error
+    var type_readers_ar = try std.ArrayList(TypeReader).initCapacity(gpa, type_reader_count);
+    errdefer {
+        for (type_readers_ar.items) |tr| {
+            gpa.free(tr.name);
+        }
+        type_readers_ar.deinit(gpa);
+    }
+    for (0..type_reader_count) |_| {
         const name = try rh.read7BitLengthString(reader, gpa);
+        errdefer gpa.free(name);
         const version = try rh.readI32(reader, .little);
-        type_readers[i] = TypeReader{
+        const tr = TypeReader{
             .name = name,
             .version = version,
         };
+        type_readers_ar.appendAssumeCapacity(tr);
         std.debug.print("type reader: {s}\n", .{name});
     }
+    const type_readers = try type_readers_ar.toOwnedSlice(gpa);
 
     const shared_asset_count = try rh.read7BitEncodedI32(reader);
     _ = shared_asset_count;

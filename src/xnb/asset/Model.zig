@@ -22,44 +22,68 @@ tag: u8,
 pub fn initFromReader(reader: *std.Io.Reader, type_readers: []const Xnb.TypeReader, gpa: std.mem.Allocator) XnbAssetReadError!Model {
     const num_bones = try rh.readU32(reader, .little);
 
-    const bones = try gpa.alloc(Bone, num_bones);
-    errdefer gpa.free(bones);
-    for (0..num_bones) |i| {
-        bones[i] = try Bone.initFromReader(reader, type_readers, gpa);
+    var bones = try std.ArrayList(Bone).initCapacity(gpa, num_bones);
+    errdefer {
+        for (bones.items) |*bone| {
+            bone.deinit(gpa);
+        }
+        bones.deinit(gpa);
+    }
+    for (0..num_bones) |_| {
+        const bone = try Bone.initFromReader(reader, type_readers, gpa);
+        bones.appendAssumeCapacity(bone);
     }
 
-    const bones_hierarchy = try gpa.alloc(BoneHierarchy, num_bones);
-    errdefer gpa.free(bones_hierarchy);
-    for (0..num_bones) |i| {
-        bones_hierarchy[i] = try BoneHierarchy.initFromReader(reader, num_bones, gpa);
+    var bones_hierarchy = try std.ArrayList(BoneHierarchy).initCapacity(gpa, num_bones);
+    errdefer {
+        for (bones_hierarchy.items) |*hierarchy| {
+            hierarchy.deinit(gpa);
+        }
+        bones_hierarchy.deinit(gpa);
+    }
+    for (0..num_bones) |_| {
+        const bone = try BoneHierarchy.initFromReader(reader, num_bones, gpa);
+        bones_hierarchy.appendAssumeCapacity(bone);
     }
 
     const num_vertex_decls = try rh.readU32(reader, .little);
-    const vertex_decls = try gpa.alloc(VertexDeclaration, num_vertex_decls);
-    errdefer gpa.free(vertex_decls);
-    for (0..num_vertex_decls) |i| {
-        const asset = try XnbAsset.initFromReader(reader, type_readers, gpa);
+    var vertex_decls = try std.ArrayList(VertexDeclaration).initCapacity(gpa, num_vertex_decls);
+    errdefer {
+        for (vertex_decls.items) |*decl| {
+            decl.deinit(gpa);
+        }
+        vertex_decls.deinit(gpa);
+    }
+    for (0..num_vertex_decls) |_| {
+        var asset = try XnbAsset.initFromReader(reader, type_readers, gpa);
         if (asset != .vertex_declaration) {
+            asset.deinit(gpa);
             return XnbAssetReadError.UnexpectedAssetType;
         }
-        vertex_decls[i] = asset.vertex_declaration;
+        vertex_decls.appendAssumeCapacity(asset.vertex_declaration);
     }
 
     const num_meshes = try rh.readU32(reader, .little);
-    const meshes = try gpa.alloc(Mesh, num_meshes);
-    errdefer gpa.free(meshes);
-    for (0..num_meshes) |i| {
-        meshes[i] = try Mesh.initFromReader(reader, type_readers, gpa);
+    var meshes = try std.ArrayList(Mesh).initCapacity(gpa, num_meshes);
+    errdefer {
+        for (meshes.items) |*mesh| {
+            mesh.deinit(gpa);
+        }
+        meshes.deinit(gpa);
+    }
+    for (0..num_meshes) |_| {
+        const mesh = try Mesh.initFromReader(reader, type_readers, gpa);
+        meshes.appendAssumeCapacity(mesh);
     }
 
     const root_bone_ref = try readBoneRef(reader, num_bones);
     const tag = try rh.readU8(reader);
 
     return Model{
-        .bones = bones,
-        .bones_hierarchy = bones_hierarchy,
-        .vertex_decls = vertex_decls,
-        .meshes = meshes,
+        .bones = try bones.toOwnedSlice(gpa),
+        .bones_hierarchy = try bones_hierarchy.toOwnedSlice(gpa),
+        .vertex_decls = try vertex_decls.toOwnedSlice(gpa),
+        .meshes = try meshes.toOwnedSlice(gpa),
         .root_bone_ref = root_bone_ref,
         .tag = tag,
     };
@@ -94,7 +118,8 @@ pub const Bone = struct {
     transform: zm.Mat4x4,
 
     pub fn initFromReader(reader: *std.Io.Reader, type_readers: []const Xnb.TypeReader, gpa: std.mem.Allocator) XnbAssetReadError!Bone {
-        const name_asset = try XnbAsset.initFromReader(reader, type_readers, gpa);
+        var name_asset = try XnbAsset.initFromReader(reader, type_readers, gpa);
+        errdefer name_asset.deinit(gpa);
         if (name_asset != .string) {
             return XnbAssetReadError.UnexpectedAssetType;
         }

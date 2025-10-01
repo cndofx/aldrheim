@@ -11,6 +11,7 @@ pub fn initFromReader(reader: *std.Io.Reader, gpa: std.mem.Allocator) !IndexBuff
     const is_16_bit = try rh.readBool(reader);
     const size = try rh.readU32(reader, .little);
     const data = try gpa.alloc(u8, size);
+    errdefer gpa.free(data);
     try reader.readSliceAll(data);
 
     return IndexBuffer{

@@ -116,35 +116,31 @@ pub const BiTreeNode = struct {
         const start_index = try rh.readI32(reader, .little);
         const bounding_box = try Model.BoundingBox.initFromReader(reader);
 
-        const has_child_a = try rh.readBool(reader);
-        const child_a = blk: {
-            if (has_child_a) {
-                const node = try gpa.create(BiTreeNode);
-                errdefer gpa.destroy(node);
-                node.* = try BiTreeNode.initFromReader(reader, gpa);
-                break :blk node;
-            } else {
-                break :blk null;
-            }
-        };
+        var child_a: ?*BiTreeNode = null;
         errdefer if (child_a) |a| {
+            a.deinit(gpa);
             gpa.destroy(a);
         };
+        const has_child_a = try rh.readBool(reader);
+        if (has_child_a) {
+            var a = try BiTreeNode.initFromReader(reader, gpa);
+            errdefer a.deinit(gpa);
+            child_a = try gpa.create(BiTreeNode);
+            child_a.?.* = a;
+        }
 
-        const has_child_b = try rh.readBool(reader);
-        const child_b = blk: {
-            if (has_child_b) {
-                const node = try gpa.create(BiTreeNode);
-                errdefer gpa.destroy(node);
-                node.* = try BiTreeNode.initFromReader(reader, gpa);
-                break :blk node;
-            } else {
-                break :blk null;
-            }
-        };
+        var child_b: ?*BiTreeNode = null;
         errdefer if (child_b) |b| {
+            b.deinit(gpa);
             gpa.destroy(b);
         };
+        const has_child_b = try rh.readBool(reader);
+        if (has_child_b) {
+            var b = try BiTreeNode.initFromReader(reader, gpa);
+            errdefer b.deinit(gpa);
+            child_b = try gpa.create(BiTreeNode);
+            child_b.?.* = b;
+        }
 
         return BiTreeNode{
             .primitive_count = primitive_count,

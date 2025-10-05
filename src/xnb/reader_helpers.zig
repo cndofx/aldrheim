@@ -115,6 +115,7 @@ pub fn read7BitEncodedI32(reader: *std.Io.Reader) ReaderError!i32 {
 pub fn read7BitLengthString(reader: *std.Io.Reader, gpa: std.mem.Allocator) AllocatorReaderError![]u8 {
     const len = try read7BitEncodedI32(reader);
     const s = try gpa.alloc(u8, @intCast(len));
+    errdefer gpa.free(s);
     try reader.readSliceAll(s);
     return s;
 }
@@ -124,6 +125,14 @@ pub fn readVec3(reader: *std.Io.Reader) ReaderError!zm.Vec3 {
     const y = try readF32(reader, .little);
     const z = try readF32(reader, .little);
     return zm.Vec3.init(x, y, z);
+}
+
+pub fn readQuat(reader: *std.Io.Reader) ReaderError!zm.Quat {
+    const x = try readF32(reader, .little);
+    const y = try readF32(reader, .little);
+    const z = try readF32(reader, .little);
+    const w = try readF32(reader, .little);
+    return zm.Quat.init(x, y, z, w);
 }
 
 pub fn readMat4x4(reader: *std.Io.Reader) ReaderError!zm.Mat4x4 {

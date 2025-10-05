@@ -124,7 +124,6 @@ pub const Bone = struct {
             return XnbAssetReadError.UnexpectedAssetType;
         }
         const name = name_asset.string;
-        errdefer gpa.free(name);
 
         const transform = try rh.readMat4x4(reader);
 
@@ -272,6 +271,21 @@ pub const BoundingSphere = struct {
         return BoundingSphere{
             .center = center,
             .radius = radius,
+        };
+    }
+};
+
+pub const BoundingBox = struct {
+    min: zm.Vec3,
+    max: zm.Vec3,
+
+    pub fn initFromReader(reader: *std.Io.Reader) XnbAssetReadError!BoundingBox {
+        const min = try rh.readVec3(reader);
+        const max = try rh.readVec3(reader);
+
+        return BoundingBox{
+            .min = min,
+            .max = max,
         };
     }
 };

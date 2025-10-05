@@ -10,7 +10,8 @@ pub const runtime_safety = switch (builtin.mode) {
 };
 
 pub fn main() !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    const stack_trace_frames = if (builtin.mode == .Debug) 16 else 0;
+    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = stack_trace_frames }) = .init;
     const gpa = if (runtime_safety)
         debug_allocator.allocator()
     else
@@ -31,21 +32,21 @@ pub fn main() !void {
     var xnb = try Xnb.initFromFile(gpa, in_path);
     defer xnb.deinit(gpa);
 
-    // TODO: temp
-    {
-        const decompressed = try xnb.decompress(gpa);
-        defer gpa.free(decompressed);
+    // // TODO: temp
+    // {
+    //     const decompressed = try xnb.decompress(gpa);
+    //     defer gpa.free(decompressed);
 
-        const out_path = try std.fmt.allocPrint(gpa, "{s}.decompressed", .{in_path});
-        defer gpa.free(out_path);
-        var out_file = try std.fs.cwd().createFile(out_path, .{});
-        defer out_file.close();
+    //     const out_path = try std.fmt.allocPrint(gpa, "{s}.decompressed", .{in_path});
+    //     defer gpa.free(out_path);
+    //     var out_file = try std.fs.cwd().createFile(out_path, .{});
+    //     defer out_file.close();
 
-        var out_writer = out_file.writer(&.{});
-        const writer = &out_writer.interface;
-        try writer.writeAll(decompressed);
-        try writer.flush();
-    }
+    //     var out_writer = out_file.writer(&.{});
+    //     const writer = &out_writer.interface;
+    //     try writer.writeAll(decompressed);
+    //     try writer.flush();
+    // }
 
     var content = try xnb.parseContent(gpa);
     defer content.deinit(gpa);

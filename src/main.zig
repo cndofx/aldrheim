@@ -5,6 +5,7 @@ const c = @import("c");
 const vk = @import("vulkan");
 const sdl = @import("sdl3");
 
+const Renderer = @import("Renderer.zig");
 const Xnb = @import("xnb/Xnb.zig");
 const Texture2d = @import("xnb/asset/Texture2d.zig");
 
@@ -50,8 +51,6 @@ pub fn main() !u8 {
 }
 
 fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
-    _ = gpa;
-
     std.debug.print("magicka path: {s}\n", .{magicka_path});
 
     try sdl.hints.set(.app_id, "cndofx.Aldrheim");
@@ -61,22 +60,25 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
     try sdl.init(sdl_init_flags);
     defer sdl.quit(sdl_init_flags);
 
-    const window = try sdl.video.Window.init("Aldrheim", 1280, 720, .{ .resizable = false });
+    const window = try sdl.video.Window.init("Aldrheim", 1280, 720, .{ .vulkan = true, .resizable = false });
     defer window.deinit();
 
-    var running = true;
-    while (running) {
-        const surface = try window.getSurface();
-        try surface.fillRect(null, surface.mapRgb(128, 30, 255));
-        try window.updateSurface();
+    var renderer = try Renderer.init(gpa, window);
+    defer renderer.deinit(gpa);
 
-        while (sdl.events.poll()) |event| {
-            switch (event) {
-                .quit => running = false,
-                else => {},
-            }
-        }
-    }
+    // var running = true;
+    // while (running) {
+    //     const surface = try window.getSurface();
+    //     try surface.fillRect(null, surface.mapRgb(128, 30, 255));
+    //     try window.updateSurface();
+
+    //     while (sdl.events.poll()) |event| {
+    //         switch (event) {
+    //             .quit => running = false,
+    //             else => {},
+    //         }
+    //     }
+    // }
 }
 
 fn extractXnb(gpa: std.mem.Allocator, path: []const u8) !void {

@@ -9,6 +9,17 @@
             .hash = "sdl3-0.1.1-NmT1QwTgIADixpCS2g5pBBON5AEfnjOox94dU0dtT-tq",
         },
 
+        .vulkan_headers = .{
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/a4f8ada9f4f97c45b8c89c57997be9cebaae65d2.tar.gz",
+            .hash = "N-V-__8AACFv-wF-l22fgoy0FY4ymittNY4Pgbh03Xg9OTbL",
+        },
+
+        // https://github.com/Snektron/vulkan-zig/pull/206
+        .vulkan = .{
+            .url = "https://github.com/Snektron/vulkan-zig/archive/750170e92237c9bfe06a2f1334630eaa30eb2040.tar.gz",
+            .hash = "vulkan-0.0.0-r7Ytx6hBAwD8X_TN32qlkzul4riK6vFvjtK9fZfRvALg",
+        },
+
         .matrix = .{
             .url = "https://github.com/AshishBhattarai/zig_matrix/archive/d3d941717d2344ae006bfc6c50116fd9d4ca5c2c.tar.gz",
             .hash = "zig_matrix-1.1.0-Fvun59aXAQBVnkS9BF5AT_imKqKp3dJqjvNivCl1ixXH",

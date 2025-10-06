@@ -11,6 +11,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const vulkan_dep = b.dependency("vulkan", .{
+        .registry = b.dependency("vulkan_headers", .{}).path("registry/vk.xml"),
+    });
+
     const matrix_dep = b.dependency("matrix", .{
         .target = target,
         .optimize = optimize,
@@ -48,6 +52,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "c", .module = translate_c_mod },
                 .{ .name = "sdl3", .module = sdl3_dep.module("sdl3") },
+                .{ .name = "vulkan", .module = vulkan_dep.module("vulkan-zig") },
                 .{ .name = "matrix", .module = matrix_dep.module("zig_matrix") },
             },
         }),

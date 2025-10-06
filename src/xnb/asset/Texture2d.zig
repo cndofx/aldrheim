@@ -1,4 +1,5 @@
 const std = @import("std");
+const sdl = @import("sdl3");
 
 const rh = @import("../reader_helpers.zig");
 
@@ -94,6 +95,20 @@ pub const PixelFormat = enum(u32) {
     pub fn stride(self: PixelFormat) !usize {
         switch (self) {
             .color => return 4,
+            else => {
+                std.debug.print("error: unsupported texture format: {}\n", .{self});
+                return error.UnsupportedTextureFormat;
+            },
+        }
+    }
+
+    pub fn toSdlTextureFormat(self: PixelFormat) !sdl.gpu.TextureFormat {
+        switch (self) {
+            .color => return .b8g8r8a8_unorm_srgb,
+            // .bc1 => return .bc1_rgba_unorm_srgb_compressed,
+            // .bc3 => return .bc3_rgba_unorm_srgb_compressed,
+            .bc1 => return .bc1_rgba_unorm_compressed,
+            .bc3 => return .bc3_rgba_unorm_compressed,
             else => {
                 std.debug.print("error: unsupported texture format: {}\n", .{self});
                 return error.UnsupportedTextureFormat;

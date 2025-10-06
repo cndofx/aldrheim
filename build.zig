@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -54,6 +54,59 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
+    const shader_target = blk: {
+        switch (target.result.os.tag) {
+            .linux => break :blk "spirv",
+            .windows => break :blk "dxil",
+            .macos => break :blk "metallib",
+            else => return error.UnsupportedOs,
+        }
+    };
+    const shader_target_is_spirv = std.mem.eql(u8, shader_target, "spirv");
+    for (shader_sources) |source| {
+        const input_path = try std.fmt.allocPrint(b.allocator, "src/shaders/{s}", .{source.path});
+
+        if (source.vertex_entry) |vertex_entry| {
+            const output_path = try std.fmt.allocPrint(b.allocator, "{s}.vert", .{source.path[0 .. source.path.len - 6]});
+            const compile_command = b.addSystemCommand(&.{"slangc"});
+            compile_command.addFileArg(b.path(input_path));
+            compile_command.addArg("-target");
+            compile_command.addArg(shader_target);
+            if (shader_target_is_spirv) {
+                compile_command.addArg("-emit-spirv-via-glsl");
+                compile_command.addArg("-profile");
+                compile_command.addArg("spirv_1_0");
+            }
+            compile_command.addArg("-entry");
+            compile_command.addArg(vertex_entry);
+            compile_command.addArg("-o");
+            const output = compile_command.addOutputFileArg(output_path);
+            exe.root_module.addAnonymousImport(output_path, .{
+                .root_source_file = output,
+            });
+        }
+
+        if (source.fragment_entry) |fragment_entry| {
+            const output_path = try std.fmt.allocPrint(b.allocator, "{s}.frag", .{source.path[0 .. source.path.len - 6]});
+            const compile_command = b.addSystemCommand(&.{"slangc"});
+            compile_command.addFileArg(b.path(input_path));
+            compile_command.addArg("-target");
+            compile_command.addArg(shader_target);
+            if (shader_target_is_spirv) {
+                compile_command.addArg("-emit-spirv-via-glsl");
+                compile_command.addArg("-profile");
+                compile_command.addArg("spirv_1_0");
+            }
+            compile_command.addArg("-entry");
+            compile_command.addArg(fragment_entry);
+            compile_command.addArg("-o");
+            const output = compile_command.addOutputFileArg(output_path);
+            exe.root_module.addAnonymousImport(output_path, .{
+                .root_source_file = output,
+            });
+        }
+    }
+
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
@@ -69,3 +122,15 @@ pub fn build(b: *std.Build) void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
     test_step.dependOn(&run_exe_tests.step);
 }
+
+const ShaderSource = struct {
+    path: []const u8,
+    vertex_entry: ?[]const u8 = null,
+    fragment_entry: ?[]const u8 = null,
+};
+
+const shader_sources = [_]ShaderSource{ShaderSource{
+    .path = "TexturedQuad.slang",
+    .vertex_entry = "VertexMain",
+    .fragment_entry = "FragmentMain",
+}};

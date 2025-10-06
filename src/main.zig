@@ -3,6 +3,7 @@ const std = @import("std");
 const c = @import("c");
 
 const Xnb = @import("xnb/Xnb.zig");
+const Texture2d = @import("xnb/asset/Texture2d.zig");
 
 pub const runtime_safety = switch (builtin.mode) {
     .Debug, .ReleaseSafe => true,
@@ -32,25 +33,28 @@ pub fn main() !void {
     var xnb = try Xnb.initFromFile(gpa, in_path);
     defer xnb.deinit(gpa);
 
-    // // TODO: temp
-    // {
-    //     const decompressed = try xnb.decompress(gpa);
-    //     defer gpa.free(decompressed);
+    const decompressed = if (xnb.header.compressed) try xnb.decompress(gpa) else xnb.data;
+    defer if (xnb.header.compressed) {
+        gpa.free(decompressed);
+    };
 
-    //     const out_path = try std.fmt.allocPrint(gpa, "{s}.decompressed", .{in_path});
-    //     defer gpa.free(out_path);
-    //     var out_file = try std.fs.cwd().createFile(out_path, .{});
-    //     defer out_file.close();
-
-    //     var out_writer = out_file.writer(&.{});
-    //     const writer = &out_writer.interface;
-    //     try writer.writeAll(decompressed);
-    //     try writer.flush();
-    // }
-
-    var content = try xnb.parseContent(gpa);
+    var content = try Xnb.parseContentFrom(decompressed, gpa);
     defer content.deinit(gpa);
 
+    // dump decompressed
+    {
+        const out_path = try std.fmt.allocPrint(gpa, "{s}.decompressed", .{in_path});
+        defer gpa.free(out_path);
+        var out_file = try std.fs.cwd().createFile(out_path, .{});
+        defer out_file.close();
+
+        var out_writer = out_file.writer(&.{});
+        const writer = &out_writer.interface;
+        try writer.writeAll(decompressed);
+        try writer.flush();
+    }
+
+    // dump png
     if (content.primary_asset == .texture_2d) {
         const texture = content.primary_asset.texture_2d;
 
@@ -69,6 +73,33 @@ pub fn main() !void {
             @intCast(4 * texture.width),
         ) == 0) {
             return error.StbWritePngFailed;
+        }
+    }
+
+    // dump png slices of 3d texture
+    if (content.primary_asset == .texture_3d) {
+        const texture = content.primary_asset.texture_3d;
+        std.debug.print("3d width: {}, height: {}, depth: {}\n", .{ texture.width, texture.height, texture.depth });
+        const slice_stride = texture.width * texture.height * 4;
+        for (0..texture.depth) |z| {
+            const slice_start = z * slice_stride;
+            const slice = texture.mips[0][slice_start .. slice_start + slice_stride];
+            const pixels = try Texture2d.decodePixels(gpa, slice, texture.width, texture.height, texture.format);
+            defer gpa.free(pixels);
+
+            const out_path = try std.fmt.allocPrint(gpa, "{s}-depth{}.png\x00", .{ in_path, z });
+            defer gpa.free(out_path);
+
+            if (c.stbi_write_png(
+                @ptrCast(out_path),
+                @intCast(texture.width),
+                @intCast(texture.height),
+                4,
+                @ptrCast(pixels),
+                @intCast(4 * texture.width),
+            ) == 0) {
+                return error.StbWritePngFailed;
+            }
         }
     }
 

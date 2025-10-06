@@ -3,7 +3,8 @@ const std = @import("std");
 const rh = @import("reader_helpers.zig");
 const Xnb = @import("Xnb.zig");
 
-const Texture2D = @import("asset/Texture2d.zig");
+const Texture2d = @import("asset/Texture2d.zig");
+const Texture3d = @import("asset/Texture3d.zig");
 const Model = @import("asset/Model.zig");
 const VertexDeclaration = @import("asset/VertexDeclaration.zig");
 const VertexBuffer = @import("asset/VertexBuffer.zig");
@@ -15,6 +16,7 @@ const RenderDeferredEffect = @import("asset/RenderDeferredEffect.zig");
 pub const string_reader_name = "Microsoft.Xna.Framework.Content.StringReader";
 pub const list_reader_name = "Microsoft.Xna.Framework.Content.ListReader"; // handled on site
 pub const texture_2d_reader_name = "Microsoft.Xna.Framework.Content.Texture2DReader";
+pub const texture_3d_reader_name = "Microsoft.Xna.Framework.Content.Texture3DReader";
 pub const model_reader_name = "Microsoft.Xna.Framework.Content.ModelReader";
 pub const vertex_declaration_reader_name = "Microsoft.Xna.Framework.Content.VertexDeclarationReader";
 pub const vertex_buffer_reader_name = "Microsoft.Xna.Framework.Content.VertexBufferReader";
@@ -32,6 +34,7 @@ pub const XnbAssetMap = std.StaticStringMap(XnbAssetKind);
 pub const xnb_asset_map = XnbAssetMap.initComptime(.{
     .{ string_reader_name, .string },
     .{ texture_2d_reader_name, .texture_2d },
+    .{ texture_3d_reader_name, .texture_3d },
     .{ model_reader_name, .model },
     .{ vertex_declaration_reader_name, .vertex_declaration },
     .{ vertex_buffer_reader_name, .vertex_buffer },
@@ -44,7 +47,8 @@ pub const xnb_asset_map = XnbAssetMap.initComptime(.{
 pub const XnbAsset = union(enum) {
     none,
     string: []u8,
-    texture_2d: Texture2D,
+    texture_2d: Texture2d,
+    texture_3d: Texture3d,
     model: Model,
     vertex_declaration: VertexDeclaration,
     vertex_buffer: VertexBuffer,
@@ -76,6 +80,7 @@ pub const XnbAsset = union(enum) {
             .none => return .none,
             .string => return .{ .string = try rh.read7BitLengthString(reader, gpa) },
             .texture_2d => return .{ .texture_2d = try .initFromReader(reader, gpa) },
+            .texture_3d => return .{ .texture_3d = try .initFromReader(reader, gpa) },
             .model => return .{ .model = try .initFromReader(reader, type_readers, gpa) },
             .vertex_declaration => return .{ .vertex_declaration = try .initFromReader(reader, gpa) },
             .vertex_buffer => return .{ .vertex_buffer = try .initFromReader(reader, gpa) },
@@ -102,6 +107,7 @@ pub const XnbAsset = union(enum) {
             .none => {},
             .string => gpa.free(self.string),
             .texture_2d => self.texture_2d.deinit(gpa),
+            .texture_3d => self.texture_3d.deinit(gpa),
             .model => self.model.deinit(gpa),
             .vertex_declaration => self.vertex_declaration.deinit(gpa),
             .vertex_buffer => self.vertex_buffer.deinit(gpa),

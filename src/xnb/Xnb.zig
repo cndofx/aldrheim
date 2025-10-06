@@ -161,12 +161,17 @@ pub fn decompress(self: Xnb, gpa: std.mem.Allocator) ![]u8 {
 
 /// content must be freed
 pub fn parseContent(self: Xnb, gpa: std.mem.Allocator) !Content {
-    const data: []const u8 = if (self.header.compressed) try self.decompress(gpa) else self.data;
+    const decompressed: []const u8 = if (self.header.compressed) try self.decompress(gpa) else self.data;
     defer if (self.header.compressed) {
-        gpa.free(data);
+        gpa.free(decompressed);
     };
 
-    var fixed_reader = std.Io.Reader.fixed(data);
+    const content = try parseContentFrom(decompressed, gpa);
+    return content;
+}
+
+pub fn parseContentFrom(decompressed: []const u8, gpa: std.mem.Allocator) !Content {
+    var fixed_reader = std.Io.Reader.fixed(decompressed);
     const reader = &fixed_reader;
 
     const type_reader_count: usize = @intCast(try rh.read7BitEncodedI32(reader));

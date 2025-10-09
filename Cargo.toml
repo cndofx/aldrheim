@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.100"
+argh = "0.1.13"
+byteorder = "1.5.0"
+lzxd = "0.2.6"

@@ -8,8 +8,14 @@ anyhow = "1.0.100"
 argh = "0.1.13"
 bcndecode = "0.2.0"
 byteorder = "1.5.0"
+env_logger = "0.11.8"
 glam = "0.30.8"
+log = "0.4.28"
 lzxd = "0.2.6"
+pollster = "0.4.0"
+wgpu = "27.0.1"
+winit = "0.30.12"
 
+bytemuck = { version = "1.24.0", features = ["derive"] }
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 strum = { version = "0.27.2", features = ["derive"] }

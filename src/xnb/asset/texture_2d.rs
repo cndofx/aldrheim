@@ -5,7 +5,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use strum::FromRepr;
 
 pub struct Texture2D {
-    pub format: u32,
+    pub format: PixelFormat,
     pub width: u32,
     pub height: u32,
     pub mips: Vec<Vec<u8>>,
@@ -14,6 +14,8 @@ pub struct Texture2D {
 impl Texture2D {
     pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let format = reader.read_u32::<LittleEndian>()?;
+        let format = PixelFormat::from_repr(format)
+            .ok_or_else(|| anyhow::anyhow!("unknown texture format: {}", format))?;
         let width = reader.read_u32::<LittleEndian>()?;
         let height = reader.read_u32::<LittleEndian>()?;
         let mip_count = reader.read_u32::<LittleEndian>()?;
@@ -32,16 +34,45 @@ impl Texture2D {
         })
     }
 
+    pub fn bytes_per_row(&self) -> anyhow::Result<u32> {
+        let block_dim = self.format.block_dim();
+        let block_size = self.format.block_size();
+
+        if self.width % block_dim != 0 {
+            anyhow::bail!(
+                "expected texture width ({}) to be a multiple of block width ({})",
+                self.width,
+                block_dim
+            );
+        }
+
+        let blocks_x = self.width / block_dim;
+        let bytes_per_row = blocks_x * block_size;
+        Ok(bytes_per_row)
+    }
+
+    pub fn rows_per_image(&self) -> anyhow::Result<u32> {
+        let block_dim = self.format.block_dim();
+
+        if self.height % block_dim != 0 {
+            anyhow::bail!(
+                "expected texture height ({}) to be a multiple of block height ({})",
+                self.height,
+                block_dim
+            );
+        }
+
+        let blocks_y = self.height / block_dim;
+        Ok(blocks_y)
+    }
+
     /// returns bgra8 pixels
     pub fn decode<'a>(&'a self, mip_index: usize) -> anyhow::Result<Cow<'a, [u8]>> {
-        let format = PixelFormat::from_repr(self.format)
-            .ok_or_else(|| anyhow::anyhow!("unknown pixel format: {}", self.format))?;
-
         let pixels = decode_pixels(
             &self.mips[mip_index],
             self.width as usize,
             self.height as usize,
-            format,
+            self.format,
         )?;
 
         Ok(pixels)
@@ -101,4 +132,32 @@ pub enum PixelFormat {
     Color = 1,
     Bc1 = 28,
     Bc3 = 32,
+}
+
+impl PixelFormat {
+    pub fn to_wgpu(self) -> wgpu::TextureFormat {
+        match self {
+            PixelFormat::Color => wgpu::TextureFormat::Bgra8UnormSrgb,
+            PixelFormat::Bc1 => wgpu::TextureFormat::Bc1RgbaUnormSrgb,
+            PixelFormat::Bc3 => wgpu::TextureFormat::Bc3RgbaUnormSrgb,
+        }
+    }
+
+    /// block width and height in pixels
+    pub fn block_dim(self) -> u32 {
+        match self {
+            PixelFormat::Color => 1,
+            PixelFormat::Bc1 => 4,
+            PixelFormat::Bc3 => 4,
+        }
+    }
+
+    /// block size in bytes
+    pub fn block_size(self) -> u32 {
+        match self {
+            PixelFormat::Color => 4,
+            PixelFormat::Bc1 => 8,
+            PixelFormat::Bc3 => 8,
+        }
+    }
 }

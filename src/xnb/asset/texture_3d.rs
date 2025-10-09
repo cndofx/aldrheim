@@ -2,8 +2,10 @@ use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
+use crate::xnb::asset::texture_2d::PixelFormat;
+
 pub struct Texture3D {
-    pub format: u32,
+    pub format: PixelFormat,
     pub width: u32,
     pub height: u32,
     pub depth: u32,
@@ -13,6 +15,8 @@ pub struct Texture3D {
 impl Texture3D {
     pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let format = reader.read_u32::<LittleEndian>()?;
+        let format = PixelFormat::from_repr(format)
+            .ok_or_else(|| anyhow::anyhow!("unknown texture format: {}", format))?;
         let width = reader.read_u32::<LittleEndian>()?;
         let height = reader.read_u32::<LittleEndian>()?;
         let depth = reader.read_u32::<LittleEndian>()?;

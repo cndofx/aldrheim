@@ -1,5 +1,6 @@
 use std::{
     io::{BufReader, Write},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -112,8 +113,6 @@ fn extract(path: &str) -> anyhow::Result<()> {
         }
         XnbAsset::Texture3D(texture) => {
             // dump png slices
-            let format = PixelFormat::from_repr(texture.format)
-                .ok_or_else(|| anyhow::anyhow!("unknown pixel format: {}", texture.format))?;
             let slice_stride = (texture.width * texture.height * 4) as usize;
             for z in 0..texture.depth {
                 let slice_start = slice_stride * z as usize;
@@ -122,7 +121,7 @@ fn extract(path: &str) -> anyhow::Result<()> {
                     slice,
                     texture.width as usize,
                     texture.height as usize,
-                    format,
+                    texture.format,
                 )?;
                 let rgba8 = texture_2d::bgra8_to_rgba8(&bgra8);
                 let mut png = Vec::new();
@@ -149,19 +148,23 @@ fn run(path: &str) -> anyhow::Result<()> {
     env_logger::init();
 
     let event_loop = EventLoop::with_user_event().build()?;
-    let mut app = App::new();
+    let mut app = App::new(path);
     event_loop.run_app(&mut app)?;
 
     Ok(())
 }
 
 struct App {
+    magicka_path: PathBuf,
     graphics: Option<GraphicsContext>,
 }
 
 impl App {
-    pub fn new() -> Self {
-        App { graphics: None }
+    pub fn new(magicka_path: impl Into<PathBuf>) -> Self {
+        App {
+            magicka_path: magicka_path.into(),
+            graphics: None,
+        }
     }
 
     fn update(&mut self) {}
@@ -185,7 +188,8 @@ impl ApplicationHandler for App {
             .with_title("Aldrheim")
             .with_name("cndofx.Aldrheim", "");
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        self.graphics = Some(pollster::block_on(GraphicsContext::new(window)).unwrap());
+        self.graphics =
+            Some(pollster::block_on(GraphicsContext::new(window, &self.magicka_path)).unwrap());
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
@@ -193,7 +197,9 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => graphics.resize(size.width, size.height),
+            WindowEvent::Resized(size) => {
+                graphics.resize(size.width, size.height);
+            }
             WindowEvent::RedrawRequested => match graphics.render() {
                 Ok(_) => {}
                 Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
@@ -201,7 +207,7 @@ impl ApplicationHandler for App {
                     graphics.resize(size.width, size.height);
                 }
                 Err(e) => {
-                    log::error!("render failed: {e}");
+                    log::error!("{e}");
                 }
             },
             WindowEvent::KeyboardInput {
@@ -227,11 +233,14 @@ struct GraphicsContext {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     vertex_count: u32,
+    index_buffer: wgpu::Buffer,
+    index_count: u32,
+    texture_bind_group: wgpu::BindGroup,
     window: Arc<Window>,
 }
 
 impl GraphicsContext {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+    pub async fn new(window: Arc<Window>, magicka_path: &Path) -> anyhow::Result<Self> {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -253,7 +262,7 @@ impl GraphicsContext {
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_limits: wgpu::Limits::defaults(),
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::TEXTURE_COMPRESSION_BC,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,
@@ -280,10 +289,123 @@ impl GraphicsContext {
             view_formats: Vec::new(),
         };
 
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let vertex_count = VERTICES.len() as u32;
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let index_count = INDICES.len() as u32;
+
+        let texture = {
+            let mut path = magicka_path.to_owned();
+            path.push("Content/UI/Menu/CampaignMap.xnb");
+            let file = std::fs::File::open(&path)?;
+            let mut reader = BufReader::new(file);
+            let xnb = Xnb::read(&mut reader)?;
+            let content = xnb.parse_content()?;
+            let XnbAsset::Texture2D(xnb_texture) = content.primary_asset else {
+                anyhow::bail!("expected texture 2d at path {}", path.display());
+            };
+
+            let texture_format = xnb_texture.format.to_wgpu();
+            dbg!(texture_format);
+
+            let texture_size = wgpu::Extent3d {
+                width: xnb_texture.width,
+                height: xnb_texture.height,
+                depth_or_array_layers: 1,
+            };
+
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Campaign Map"),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                size: texture_size,
+                format: texture_format,
+                dimension: wgpu::TextureDimension::D2,
+                mip_level_count: 1,
+                sample_count: 1,
+                view_formats: &[],
+            });
+
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &xnb_texture.mips[0],
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(xnb_texture.bytes_per_row()?),
+                    rows_per_image: Some(xnb_texture.rows_per_image()?),
+                },
+                texture_size,
+            );
+
+            texture
+        };
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture_sampler),
+                },
+            ],
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shader.wgsl"));
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&texture_bind_group_layout],
             push_constant_ranges: &[],
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -320,13 +442,6 @@ impl GraphicsContext {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let vertex_count = VERTICES.len() as u32;
-
         let ctx = GraphicsContext {
             surface,
             surface_config,
@@ -336,18 +451,23 @@ impl GraphicsContext {
             pipeline,
             vertex_buffer,
             vertex_count,
+            index_buffer,
+            index_count,
+            texture_bind_group,
             window,
         };
         Ok(ctx)
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.surface_config.width = width;
-            self.surface_config.height = height;
-            self.surface.configure(&self.device, &self.surface_config);
-            self.is_surface_configured = true;
+        if width == 0 || height == 0 {
+            return;
         }
+
+        self.surface_config.width = width;
+        self.surface_config.height = height;
+        self.surface.configure(&self.device, &self.surface_config);
+        self.is_surface_configured = true;
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -389,11 +509,15 @@ impl GraphicsContext {
             });
 
             render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..self.vertex_count, 0..1);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.index_count, 0, 0..1);
         }
 
         self.queue.submit([command_encoder.finish()]);
+
+        self.window.pre_present_notify();
         surface_texture.present();
 
         Ok(())
@@ -404,7 +528,7 @@ impl GraphicsContext {
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
 struct Vertex {
     position: [f32; 3],
-    color: [f32; 3],
+    tex_coords: [f32; 2],
 }
 
 impl Vertex {
@@ -421,7 +545,7 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x3,
+                    format: wgpu::VertexFormat::Float32x2,
                 },
             ],
         }
@@ -430,15 +554,21 @@ impl Vertex {
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [0.0, 0.5, 0.0],
-        color: [1.0, 0.0, 0.0],
+        position: [-1.0, 1.0, 0.0],
+        tex_coords: [0.0, 0.0],
     },
     Vertex {
-        position: [-0.5, -0.5, 0.0],
-        color: [0.0, 1.0, 0.0],
+        position: [1.0, 1.0, 0.0],
+        tex_coords: [1.0, 0.0],
     },
     Vertex {
-        position: [0.5, -0.5, 0.0],
-        color: [0.0, 0.0, 1.0],
+        position: [1.0, -1.0, 0.0],
+        tex_coords: [1.0, 1.0],
+    },
+    Vertex {
+        position: [-1.0, -1.0, 0.0],
+        tex_coords: [0.0, 1.0],
     },
 ];
+
+const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];

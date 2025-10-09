@@ -10,25 +10,26 @@ struct VertexOutput
     float4 Position : SV_Position;
 };
 
-// Texture2D<float4> Texture;
-// SamplerState Sampler;
-
-// Texture2D<float4> Texture : register(t0, space0);
-// SamplerState Sampler : register(s0, space0);
+[[vk::binding(0, 0)]]
+StructuredBuffer<float4x4> Matrices : register(t0, space0);
 
 [[vk::binding(0, 2)]]
 Texture2D<float4> Texture : register(t0, space2);
 [[vk::binding(0, 2)]]
 SamplerState Sampler : register(s0, space2);
 
-// Sampler2D<float4> Sampler : register(s0, space0);
-
 [shader("vertex")]
 VertexOutput VertexMain(VertexInput input)
 {
+    float4x4 view = Matrices[0];
+    float4x4 projection = Matrices[1];
+
+    var mvp = projection * view;
+
     VertexOutput output;
     output.TexCoord = input.TexCoord;
-    output.Position = float4(input.Position, 1.0);
+    // output.Position = float4(input.Position, 1.0);
+    output.Position = mul(float4(input.Position, 1.0), mvp);
     return output;
 }
 

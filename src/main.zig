@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const c = @import("c");
-
+const zm = @import("matrix");
 const sdl = @import("sdl3");
 
 const Xnb = @import("xnb/Xnb.zig");
@@ -158,9 +158,9 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
 
     // create gpu pipeline
 
-    const vert_shader = try loadShader(device, @embedFile("TexturedQuad.vert"), "main", .vertex, 0);
+    const vert_shader = try loadShader(device, @embedFile("TexturedQuad.vert"), "main", .vertex, .{ .num_storage_buffers = 1 });
     defer device.releaseShader(vert_shader);
-    const frag_shader = try loadShader(device, @embedFile("TexturedQuad.frag"), "main", .fragment, 1);
+    const frag_shader = try loadShader(device, @embedFile("TexturedQuad.frag"), "main", .fragment, .{ .num_samplers = 1 });
     defer device.releaseShader(frag_shader);
 
     const pipeline_create_info = sdl.gpu.GraphicsPipelineCreateInfo{
@@ -202,28 +202,6 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
     const pipeline = try device.createGraphicsPipeline(pipeline_create_info);
     defer device.releaseGraphicsPipeline(pipeline);
 
-    // create gpu buffers
-
-    // const vertex_buffer_create_info = sdl.gpu.BufferCreateInfo{
-    //     .usage = .{ .vertex = true },
-    //     .size = @sizeOf(Vertex) * 4,
-    //     .props = .{
-    //         .name = "Quad Vertex Buffer!",
-    //     },
-    // };
-    // const vertex_buffer = try device.createBuffer(vertex_buffer_create_info);
-    // defer device.releaseBuffer(vertex_buffer);
-
-    // const index_buffer_create_info = sdl.gpu.BufferCreateInfo{
-    //     .usage = .{ .index = true },
-    //     .size = @sizeOf(u16) * 6,
-    //     .props = .{
-    //         .name = "Quad Index Buffer!",
-    //     },
-    // };
-    // const index_buffer = try device.createBuffer(index_buffer_create_info);
-    // defer device.releaseBuffer(index_buffer);
-
     const vertex_data = [4]Vertex{
         Vertex{
             .x = -1,
@@ -261,63 +239,11 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
     };
     const index_data_bytes: []const u8 = @as([*]const u8, @ptrCast(&index_data))[0 .. @sizeOf(u16) * index_data.len];
 
-    const vertex_buffer = try uploadBuffer(device, vertex_data_bytes, .{ .vertex = true });
+    const vertex_buffer = try uploadNewBuffer(device, vertex_data_bytes, .{ .vertex = true });
     defer device.releaseBuffer(vertex_buffer);
 
-    const index_buffer = try uploadBuffer(device, index_data_bytes, .{ .index = true });
+    const index_buffer = try uploadNewBuffer(device, index_data_bytes, .{ .index = true });
     defer device.releaseBuffer(index_buffer);
-
-    // create gpu texture
-
-    // if (device.textureSupportsFormat(try dirt_texture.format.toSdlTextureFormat(), .two_dimensional, .{ .sampler = true }) == false) {
-    //     return error.UnsupportedGpuTextureFormat;
-    // }
-
-    // const texture_create_info = sdl.gpu.TextureCreateInfo{
-    //     .texture_type = .two_dimensional,
-    //     .format = try dirt_texture.format.toSdlTextureFormat(),
-    //     .usage = .{ .sampler = true },
-    //     .width = dirt_texture.width,
-    //     .height = dirt_texture.height,
-    //     .layer_count_or_depth = 1,
-    //     .num_levels = 1,
-    //     .props = .{
-    //         .name = "Quad Texture!",
-    //     },
-    // };
-    // const texture = try device.createTexture(texture_create_info);
-    // defer device.releaseTexture(texture);
-
-    // {
-    //     const tansfer_buffer_create_info = sdl.gpu.TransferBufferCreateInfo{
-    //         .usage = .upload,
-    //         .size = @intCast(dirt_texture.mips[0].len),
-    //     };
-    //     const texture_transfer_buffer = try device.createTransferBuffer(tansfer_buffer_create_info);
-    //     defer device.releaseTransferBuffer(texture_transfer_buffer);
-
-    //     const texture_transfer_ptr = try device.mapTransferBuffer(texture_transfer_buffer, false);
-    //     @memcpy(texture_transfer_ptr, dirt_texture.mips[0]);
-    //     device.unmapTransferBuffer(texture_transfer_buffer);
-
-    //     const upload_command_buffer = try device.acquireCommandBuffer();
-    //     const copy_pass = upload_command_buffer.beginCopyPass();
-
-    //     const texture_transfer_info = sdl.gpu.TextureTransferInfo{
-    //         .transfer_buffer = texture_transfer_buffer,
-    //         .offset = 0,
-    //     };
-    //     const destination_region = sdl.gpu.TextureRegion{
-    //         .texture = texture,
-    //         .width = dirt_texture.width,
-    //         .height = dirt_texture.height,
-    //         .depth = 1,
-    //     };
-    //     copy_pass.uploadToTexture(texture_transfer_info, destination_region, false);
-
-    //     copy_pass.end();
-    //     try upload_command_buffer.submit();
-    // }
 
     const texture = try uploadTexture2d(
         device,
@@ -340,13 +266,48 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
     const sampler = try device.createSampler(sampler_create_info);
     defer device.releaseSampler(sampler);
 
+    // const
+    // const mvp_buffer = try uploadBuffer(device: Device, data: []const u8, usage: BufferUsageFlags)
+    const mvp_buffer = try createBuffer(device, @sizeOf(zm.Mat4x4) * 3, .{ .graphics_storage_read = true });
+    defer device.releaseBuffer(mvp_buffer);
+
     // main loop
+
+    var window_width: f32 = 1280.0;
+    var window_height: f32 = 720.0;
+    var projection = zm.Mat4x4.perspectiveY(90.0, window_width / window_height, 0.1, 1000.0);
 
     var running = true;
     while (running) {
+        const radius: f32 = 10.0;
+        const seconds = @as(f32, @floatFromInt(sdl.timer.getMillisecondsSinceInit())) / std.time.ms_per_s;
+        const x = @sin(seconds) * radius;
+        const y = @cos(seconds) * radius;
+        const view = lookAt(zm.Vec3.init(x, y, 0.0), zm.Vec3.init(0.0, 0.0, 0.0), zm.Vec3.init(0.0, 1.0, 0.0));
+        // printMatrix(view);
+
+        const testmatrix = lookAt(zm.Vec3.init(0.0, 0.0, -10.0), zm.Vec3.init(0.0, 0.0, 0.0), zm.Vec3.init(0.0, 1.0, 0.0));
+        printMatrix(testmatrix);
+
         const command_buffer = try device.acquireCommandBuffer();
         const swapchain_texture = try command_buffer.waitAndAcquireSwapchainTexture(window);
         const target_texture = swapchain_texture.texture.?;
+
+        const projection_bytes = @as([]const u8, @ptrCast(&projection))[0..@sizeOf(zm.Mat4x4)];
+        // command_buffer.pushVertexUniformData(0, projection_bytes);
+        const view_bytes = @as([]const u8, @ptrCast(&view))[0..@sizeOf(zm.Mat4x4)];
+        // command_buffer.pushVertexUniformData(1, view_bytes);
+
+        var mvp_offset: usize = 0;
+        var mvp: [@sizeOf(zm.Mat4x4) * 3]u8 = undefined;
+        @memcpy(mvp[mvp_offset .. mvp_offset + view_bytes.len], view_bytes);
+        mvp_offset += view_bytes.len;
+        @memcpy(mvp[mvp_offset .. mvp_offset + projection_bytes.len], projection_bytes);
+        mvp_offset += projection_bytes.len;
+
+        try uploadBuffer(device, mvp_buffer, &mvp, 0);
+        // uploadBuffer(device, mvp_buffer, projection_bytes, 0);
+        // uploadBuffer(device, buffer: Buffer, data: []const u8, offset: usize)
 
         const color_target_infos = [1]sdl.gpu.ColorTargetInfo{
             sdl.gpu.ColorTargetInfo{
@@ -382,6 +343,7 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
                 .texture = texture,
             },
         };
+        render_pass.bindVertexStorageBuffers(0, @ptrCast(&mvp_buffer));
         render_pass.bindFragmentSamplers(0, &sampler_bindings);
         render_pass.drawIndexedPrimitives(index_data.len, 1, 0, 0, 0);
         render_pass.end();
@@ -391,13 +353,25 @@ fn run(gpa: std.mem.Allocator, magicka_path: []const u8) !void {
         while (sdl.events.poll()) |event| {
             switch (event) {
                 .quit => running = false,
+                .window_resized => {
+                    window_width = @floatFromInt(event.window_resized.width);
+                    window_height = @floatFromInt(event.window_resized.height);
+                    projection = zm.Mat4x4.perspectiveY(90.0, window_width / window_height, 0.1, 1000.0);
+                },
                 else => {},
             }
         }
     }
 }
 
-fn loadShader(device: sdl.gpu.Device, source: []const u8, entry_point: [:0]const u8, stage: sdl.gpu.ShaderStage, num_samplers: u32) !sdl.gpu.Shader {
+const ShaderLoadOptions = struct {
+    num_samplers: u32 = 0,
+    num_storage_textures: u32 = 0,
+    num_storage_buffers: u32 = 0,
+    num_uniform_buffers: u32 = 0,
+};
+
+fn loadShader(device: sdl.gpu.Device, source: []const u8, entry_point: [:0]const u8, stage: sdl.gpu.ShaderStage, options: ShaderLoadOptions) !sdl.gpu.Shader {
     const format = comptime blk: {
         var f = sdl.gpu.ShaderFormatFlags{};
         if (builtin.os.tag == .linux) {
@@ -417,24 +391,29 @@ fn loadShader(device: sdl.gpu.Device, source: []const u8, entry_point: [:0]const
         .entry_point = entry_point,
         .stage = stage,
         .format = format,
-        .num_samplers = num_samplers,
+        .num_samplers = options.num_samplers,
+        .num_storage_textures = options.num_storage_textures,
+        .num_storage_buffers = options.num_storage_buffers,
+        .num_uniform_buffers = options.num_uniform_buffers,
     };
 
     const shader = try device.createShader(shader_create_info);
     return shader;
 }
 
-fn uploadBuffer(device: sdl.gpu.Device, data: []const u8, usage: sdl.gpu.BufferUsageFlags) !sdl.gpu.Buffer {
+fn createBuffer(device: sdl.gpu.Device, size: usize, usage: sdl.gpu.BufferUsageFlags) !sdl.gpu.Buffer {
     const buffer_create_info = sdl.gpu.BufferCreateInfo{
         .usage = usage,
-        .size = @intCast(data.len),
+        .size = @intCast(size),
         .props = .{
             .name = "My Buffer!",
         },
     };
     const buffer = try device.createBuffer(buffer_create_info);
-    errdefer device.releaseBuffer(buffer);
+    return buffer;
+}
 
+fn uploadBuffer(device: sdl.gpu.Device, buffer: sdl.gpu.Buffer, data: []const u8, offset: usize) !void {
     const transfer_buffer_create_info = sdl.gpu.TransferBufferCreateInfo{
         .usage = .upload,
         .size = @intCast(data.len),
@@ -455,14 +434,19 @@ fn uploadBuffer(device: sdl.gpu.Device, data: []const u8, usage: sdl.gpu.BufferU
     };
     const destination = sdl.gpu.BufferRegion{
         .buffer = buffer,
-        .offset = 0,
+        .offset = @intCast(offset),
         .size = @intCast(data.len),
     };
     copy_pass.uploadToBuffer(source, destination, false);
 
     copy_pass.end();
     try upload_command_buffer.submit();
+}
 
+fn uploadNewBuffer(device: sdl.gpu.Device, data: []const u8, usage: sdl.gpu.BufferUsageFlags) !sdl.gpu.Buffer {
+    const buffer = try createBuffer(device, data.len, usage);
+    errdefer device.releaseBuffer(buffer);
+    try uploadBuffer(device, buffer, data, 0);
     return buffer;
 }
 
@@ -532,3 +516,91 @@ const Vertex = extern struct {
     u: f32,
     v: f32,
 };
+
+// const Camera = struct {
+//     position: zm.Vec3,
+//     // direction: zm.Vec3,
+//     up: zm.Vec3,
+//     // right: zm.Vec3,
+
+//     // fn a(self: Camera) void {
+//     //     self.position.cross(self.direction);
+//     // }
+
+//     fn update(self: *Camera, time: f64) void {
+//         const radius: f64 = 10.0;
+//         const seconds = @as(f64, @floatFromInt(sdl.timer.getMillisecondsSinceInit())) / std.time.ms_per_s;
+//         const x = @sin(seconds) * radius;
+//         const y = @cos(seconds) * radius;
+
+//         // const view = zm.Mat4x4.perspectiveX(fov: f32, aspect_ratio: f32, near: f32, far: f32)
+//         const view = lookAt(self.position, zm.Vec3.init(0, 0, 0), self.up);
+//     }
+// };
+
+fn lookAt(eye: zm.Vec3, target: zm.Vec3, up: zm.Vec3) zm.Mat4x4 {
+    // std.debug.print("lookAt: f = {}\n", .{f});
+
+    {
+        // const target_sub_eye = target.sub(eye);
+        // std.debug.print("target_sub_eye: {}\n", .{target_sub_eye});
+        // const target_sub_eye_norm = target_sub_eye.norm();
+        // std.debug.print("target_sub_eye_norm: {}\n", .{target_sub_eye_norm});
+
+        // const length = target_sub_eye.len();
+        // const length = zm.Vec3.init(1.0, 2.0, 3.0).len();
+        // std.debug.print("length: {}\n", .{length});
+        // const normalized = target_sub_eye.divScalar(length);
+        // std.debug.print("normalized: {}\n", .{normalized});
+        // const pred: @Vector(3, bool) = @splat(length < std.math.floatEps(f32)); // llvm works but zigs backend miscompiles?
+        // const a: f32 = 0.0;
+        // const b: f32 = 2.0;
+        // const pred: @Vector(3, bool) = @splat(a > b); // llvm works but zigs backend miscompiles?
+        // const l: f32 = 10.0;
+        // const pred: @Vector(3, bool) = @splat(length < std.math.floatEps(f32)); // llvm works but zigs backend miscompiles?
+        // std.debug.print("pred: {}\n", .{pred});
+        // const zero: @Vector(3, f32) = @splat(0.0);
+        // std.debug.print("zero: {}\n", .{zero});
+        // const out = zm.Vec3{ .e = @select(f32, pred, zero, normalized.e) };
+        // std.debug.print("out: {}\n", .{out});
+
+        // minimal?
+        const length = zm.Vec3.init(1.0, 2.0, 3.0).len();
+        std.debug.print("length: {}\n", .{length});
+        const pred: @Vector(3, bool) = @splat(length < std.math.floatEps(f32)); // llvm works but zigs backend miscompiles?
+        std.debug.print("pred: {}\n", .{pred});
+
+        // const vec: @Vector(3, f32) = .{ 1.0, 2.0, 3.0 };
+        // const length_sq = @reduce(.Add, vec * vec);
+        // const length = std.math.sqrt(length_sq);
+        // std.debug.print("length: {}\n", .{length});
+        // const pred: @Vector(3, bool) = @splat(length < std.math.floatEps(f32));
+        // std.debug.print("pred: {}\n", .{pred});
+
+        // const pred: @Vector(3, bool) = @splat(3.7416575 < std.math.floatEps(f32));
+        // std.debug.print("pred: {}\n", .{pred});
+    }
+
+    const f = target.sub(eye).norm();
+    // const f = eye.sub(target).norm();
+    const r = up.cross(f).norm();
+    // const r = f.cross(up).norm();
+    const u = f.cross(r);
+    // const u = r.cross(f);
+
+    const view = zm.Mat4x4.fromSlice(&.{
+        r.x(),             u.x(),             f.x(),             0.0,
+        r.y(),             u.y(),             f.y(),             0.0,
+        r.z(),             u.z(),             f.z(),             0.0,
+        r.dot(eye) * -1.0, u.dot(eye) * -1.0, f.dot(eye) * -1.0, 1.0,
+    });
+
+    return view;
+}
+
+fn printMatrix(m: zm.Mat4x4) void {
+    for (m.e) |row| {
+        std.debug.print("| {d: >7.2} {d: >7.2} {d: >7.2} {d: >7.2} |\n", .{ row.x(), row.y(), row.z(), row.w() });
+    }
+    std.debug.print("\n", .{});
+}

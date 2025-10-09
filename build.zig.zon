@@ -3,6 +3,7 @@
     .version = "0.0.0",
     .fingerprint = 0x12b0bc12be1e1f94, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.1",
+    // .minimum_zig_version = "0.16.0-dev.655+6893e7fee",
     .dependencies = .{
         .sdl3 = .{
             .url = "https://github.com/Gota7/zig-sdl3/archive/refs/tags/v0.1.1.tar.gz",

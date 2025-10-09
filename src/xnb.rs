@@ -5,6 +5,10 @@ use std::{
     io::{Cursor, Read, Seek},
 };
 
+use crate::{read_ext::MyReadBytesExt, xnb::asset::XnbAsset};
+
+pub mod asset;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
     Windows,
@@ -28,20 +32,23 @@ pub struct Header {
     pub uncompressed_size: u32,
 }
 
+pub struct TypeReader {
+    pub name: String,
+    pub version: i32,
+}
+
+pub struct XnbContent {
+    pub type_readers: Vec<TypeReader>,
+    pub primary_asset: XnbAsset,
+    pub shared_assets: Vec<XnbAsset>,
+}
+
 pub struct Xnb {
-    header: Header,
-    data: Vec<u8>,
+    pub header: Header,
+    pub data: Vec<u8>,
 }
 
 impl Xnb {
-    pub fn header(&self) -> &Header {
-        &self.header
-    }
-
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
     pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let mut magic = [0u8; 3];
         reader.read_exact(&mut magic)?;
@@ -131,5 +138,36 @@ impl Xnb {
         }
 
         Ok(Cow::from(decompressed))
+    }
+
+    pub fn parse_content(&self) -> anyhow::Result<XnbContent> {
+        let decompressed = self.decompress()?;
+        let content = Xnb::parse_content_from(&decompressed)?;
+        return Ok(content);
+    }
+
+    pub fn parse_content_from(decompressed: &[u8]) -> anyhow::Result<XnbContent> {
+        let mut reader = Cursor::new(decompressed);
+
+        let type_reader_count = reader.read_7bit_encoded_i32()? as usize;
+        let mut type_readers = Vec::with_capacity(type_reader_count);
+        for _ in 0..type_reader_count {
+            let name = reader.read_7bit_length_string()?;
+            let version = reader.read_i32::<LittleEndian>()?;
+            let type_reader = TypeReader { name, version };
+            println!("type reader: {}", &type_reader.name); // TODO: remove
+            type_readers.push(type_reader);
+        }
+
+        let _shared_asset_count = reader.read_7bit_encoded_i32()?; // TODO
+
+        let primary_asset = XnbAsset::read(&mut reader, &type_readers)?;
+
+        let content = XnbContent {
+            type_readers,
+            primary_asset,
+            shared_assets: Vec::new(),
+        };
+        Ok(content)
     }
 }

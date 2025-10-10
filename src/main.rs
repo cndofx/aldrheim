@@ -1,10 +1,13 @@
 use std::{
+    f32::consts::PI,
     io::{BufReader, Write},
     path::{Path, PathBuf},
     sync::Arc,
+    time::Instant,
 };
 
 use argh::FromArgs;
+use glam::{Mat4, Vec3};
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use wgpu::util::DeviceExt;
 use winit::{
@@ -156,6 +159,7 @@ fn run(path: &str) -> anyhow::Result<()> {
 
 struct App {
     magicka_path: PathBuf,
+    start_time: Instant,
     graphics: Option<GraphicsContext>,
 }
 
@@ -163,6 +167,7 @@ impl App {
     pub fn new(magicka_path: impl Into<PathBuf>) -> Self {
         App {
             magicka_path: magicka_path.into(),
+            start_time: Instant::now(),
             graphics: None,
         }
     }
@@ -200,16 +205,19 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 graphics.resize(size.width, size.height);
             }
-            WindowEvent::RedrawRequested => match graphics.render() {
-                Ok(_) => {}
-                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                    let size = graphics.window.inner_size();
-                    graphics.resize(size.width, size.height);
+            WindowEvent::RedrawRequested => {
+                let time = self.start_time.elapsed().as_secs_f32();
+                match graphics.render(time) {
+                    Ok(_) => {}
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        let size = graphics.window.inner_size();
+                        graphics.resize(size.width, size.height);
+                    }
+                    Err(e) => {
+                        log::error!("{e}");
+                    }
                 }
-                Err(e) => {
-                    log::error!("{e}");
-                }
-            },
+            }
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -236,6 +244,8 @@ struct GraphicsContext {
     index_buffer: wgpu::Buffer,
     index_count: u32,
     texture_bind_group: wgpu::BindGroup,
+    camera_uniform_buffer: wgpu::Buffer,
+    camera_uniform_bind_group: wgpu::BindGroup,
     window: Arc<Window>,
 }
 
@@ -367,7 +377,7 @@ impl GraphicsContext {
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: None,
+                label: Some("Texture Bind Group Layout"),
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
@@ -388,7 +398,7 @@ impl GraphicsContext {
                 ],
             });
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
+            label: Some("Texture Bind Group"),
             layout: &texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -402,10 +412,47 @@ impl GraphicsContext {
             ],
         });
 
+        let camera_uniform = CameraUniform {
+            view: Mat4::IDENTITY,
+            projection: Mat4::IDENTITY,
+        };
+        let camera_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let camera_uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let camera_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera Uniform Bind Group"),
+            layout: &camera_uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(
+                    camera_uniform_buffer.as_entire_buffer_binding(),
+                ),
+            }],
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shader.wgsl"));
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&texture_bind_group_layout],
+            bind_group_layouts: &[
+                &texture_bind_group_layout,
+                &camera_uniform_bind_group_layout,
+            ],
             push_constant_ranges: &[],
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -454,6 +501,8 @@ impl GraphicsContext {
             index_buffer,
             index_count,
             texture_bind_group,
+            camera_uniform_buffer,
+            camera_uniform_bind_group,
             window,
         };
         Ok(ctx)
@@ -470,12 +519,32 @@ impl GraphicsContext {
         self.is_surface_configured = true;
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, time: f32) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
 
         if !self.is_surface_configured {
             return Ok(());
         }
+
+        let window_size = self.window.inner_size();
+        let projection = Mat4::perspective_lh(
+            75.0_f32.to_radians(),
+            (window_size.width as f32) / (window_size.height as f32),
+            1.0,
+            10000.0,
+        );
+
+        let radius = 4.0;
+        let x = time.sin() * radius;
+        let z = time.cos() * radius;
+        let view = Mat4::look_at_lh(Vec3::new(x, 0.0, z), Vec3::ZERO, Vec3::Y);
+
+        let camera_uniform = CameraUniform { view, projection };
+        self.queue.write_buffer(
+            &self.camera_uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[camera_uniform]),
+        );
 
         let surface_texture = self.surface.get_current_texture()?;
         let surface_view = surface_texture
@@ -510,6 +579,7 @@ impl GraphicsContext {
 
             render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.index_count, 0, 0..1);
@@ -522,6 +592,13 @@ impl GraphicsContext {
 
         Ok(())
     }
+}
+
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
+struct CameraUniform {
+    view: Mat4,
+    projection: Mat4,
 }
 
 #[repr(C)]

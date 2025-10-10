@@ -2,7 +2,7 @@ use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct VertexDeclaration {
     pub elements: Vec<VertexElement>,
 }
@@ -39,7 +39,7 @@ impl VertexDeclaration {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct VertexElement {
     pub stream: u16,
     pub offset: u16,
@@ -66,10 +66,14 @@ impl VertexElement {
             usage_index,
         })
     }
+
+    pub fn debug_string(&self) -> String {
+        format!("{:?}-{:?}", self.format, self.usage)
+    }
 }
 
 #[repr(u8)]
-#[derive(strum::FromRepr, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(strum::FromRepr, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ElementFormat {
     Single,
     Vector2,
@@ -122,7 +126,7 @@ impl ElementFormat {
 }
 
 #[repr(u8)]
-#[derive(strum::FromRepr, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(strum::FromRepr, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ElementMethod {
     Default,
     UV = 4,
@@ -140,7 +144,7 @@ impl ElementMethod {
 }
 
 #[repr(u8)]
-#[derive(strum::FromRepr, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(strum::FromRepr, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ElementUsage {
     Position,
     BlendWeight,

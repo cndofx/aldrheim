@@ -155,11 +155,10 @@ impl Xnb {
             let name = reader.read_7bit_length_string()?;
             let version = reader.read_i32::<LittleEndian>()?;
             let type_reader = TypeReader { name, version };
-            println!("type reader: {}", &type_reader.name); // TODO: remove
             type_readers.push(type_reader);
         }
 
-        let shared_asset_count = reader.read_7bit_encoded_i32()?; // TODO
+        let shared_asset_count = reader.read_7bit_encoded_i32()?;
 
         let primary_asset = XnbAsset::read(&mut reader, &type_readers)?;
 

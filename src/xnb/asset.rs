@@ -1,19 +1,40 @@
-use crate::{read_ext::MyReadBytesExt, xnb::TypeReader};
 use std::io::Read;
 
-use texture_2d::Texture2D;
-use texture_3d::Texture3D;
+use crate::{
+    read_ext::MyReadBytesExt,
+    xnb::{
+        TypeReader,
+        asset::{
+            index_buffer::IndexBuffer, model::Model, texture_2d::Texture2D, texture_3d::Texture3D,
+            vertex_buffer::VertexBuffer, vertex_decl::VertexDeclaration,
+        },
+    },
+};
 
+pub mod index_buffer;
+pub mod model;
 pub mod texture_2d;
 pub mod texture_3d;
+pub mod vertex_buffer;
+pub mod vertex_decl;
 
+const STRING_READER_NAME: &str = "Microsoft.Xna.Framework.Content.StringReader";
 const TEXTURE_2D_READER_NAME: &str = "Microsoft.Xna.Framework.Content.Texture2DReader";
 const TEXTURE_3D_READER_NAME: &str = "Microsoft.Xna.Framework.Content.Texture3DReader";
+const MODEL_READER_NAME: &str = "Microsoft.Xna.Framework.Content.ModelReader";
+const VERTEX_DECL_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexDeclarationReader";
+const VERTEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexBufferReader";
+const INDEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.IndexBufferReader";
 
 pub enum XnbAsset {
     Null,
+    String(String),
     Texture2D(Texture2D),
     Texture3D(Texture3D),
+    Model(Model),
+    VertexDeclaration(VertexDeclaration),
+    VertexBuffer(VertexBuffer),
+    IndexBuffer(IndexBuffer),
 }
 
 impl XnbAsset {
@@ -26,6 +47,10 @@ impl XnbAsset {
 
         let name = type_reader.name.split(',').next().unwrap();
         match name {
+            STRING_READER_NAME => {
+                let string = reader.read_7bit_length_string()?;
+                Ok(XnbAsset::String(string))
+            }
             TEXTURE_2D_READER_NAME => {
                 let texture = Texture2D::read(reader)?;
                 Ok(XnbAsset::Texture2D(texture))
@@ -33,6 +58,22 @@ impl XnbAsset {
             TEXTURE_3D_READER_NAME => {
                 let texture = Texture3D::read(reader)?;
                 Ok(XnbAsset::Texture3D(texture))
+            }
+            MODEL_READER_NAME => {
+                let model = Model::read(reader, type_readers)?;
+                Ok(XnbAsset::Model(model))
+            }
+            VERTEX_DECL_READER_NAME => {
+                let decl = VertexDeclaration::read(reader)?;
+                Ok(XnbAsset::VertexDeclaration(decl))
+            }
+            VERTEX_BUFFER_READER_NAME => {
+                let buffer = VertexBuffer::read(reader)?;
+                Ok(XnbAsset::VertexBuffer(buffer))
+            }
+            INDEX_BUFFER_READER_NAME => {
+                let buffer = IndexBuffer::read(reader)?;
+                Ok(XnbAsset::IndexBuffer(buffer))
             }
             _ => {
                 anyhow::bail!("unknown type reader: {}", type_reader.name);

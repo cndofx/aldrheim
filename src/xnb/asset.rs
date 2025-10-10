@@ -5,14 +5,17 @@ use crate::{
     xnb::{
         TypeReader,
         asset::{
-            index_buffer::IndexBuffer, model::Model, texture_2d::Texture2D, texture_3d::Texture3D,
-            vertex_buffer::VertexBuffer, vertex_decl::VertexDeclaration,
+            index_buffer::IndexBuffer, model::Model, render_deferred_effect::RenderDeferredEffect,
+            texture_2d::Texture2D, texture_3d::Texture3D, vertex_buffer::VertexBuffer,
+            vertex_decl::VertexDeclaration,
         },
     },
 };
 
+pub mod color;
 pub mod index_buffer;
 pub mod model;
+pub mod render_deferred_effect;
 pub mod texture_2d;
 pub mod texture_3d;
 pub mod vertex_buffer;
@@ -26,6 +29,8 @@ const VERTEX_DECL_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexDec
 const VERTEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexBufferReader";
 const INDEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.IndexBufferReader";
 
+const RENDER_DEFERRED_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.RenderDeferredEffectReader";
+
 pub enum XnbAsset {
     Null,
     String(String),
@@ -35,6 +40,7 @@ pub enum XnbAsset {
     VertexDeclaration(VertexDeclaration),
     VertexBuffer(VertexBuffer),
     IndexBuffer(IndexBuffer),
+    RenderDeferredEffect(RenderDeferredEffect),
 }
 
 impl XnbAsset {
@@ -74,6 +80,10 @@ impl XnbAsset {
             INDEX_BUFFER_READER_NAME => {
                 let buffer = IndexBuffer::read(reader)?;
                 Ok(XnbAsset::IndexBuffer(buffer))
+            }
+            RENDER_DEFERRED_EFFECT_READER_NAME => {
+                let effect = RenderDeferredEffect::read(reader)?;
+                Ok(XnbAsset::RenderDeferredEffect(effect))
             }
             _ => {
                 anyhow::bail!("unknown type reader: {}", type_reader.name);

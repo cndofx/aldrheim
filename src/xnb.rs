@@ -159,14 +159,20 @@ impl Xnb {
             type_readers.push(type_reader);
         }
 
-        let _shared_asset_count = reader.read_7bit_encoded_i32()?; // TODO
+        let shared_asset_count = reader.read_7bit_encoded_i32()?; // TODO
 
         let primary_asset = XnbAsset::read(&mut reader, &type_readers)?;
+
+        let mut shared_assets = Vec::with_capacity(shared_asset_count as usize);
+        for _ in 0..shared_asset_count {
+            let asset = XnbAsset::read(&mut reader, &type_readers)?;
+            shared_assets.push(asset);
+        }
 
         let content = XnbContent {
             type_readers,
             primary_asset,
-            shared_assets: Vec::new(),
+            shared_assets,
         };
         Ok(content)
     }

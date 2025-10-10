@@ -34,35 +34,19 @@ impl Texture2D {
         })
     }
 
-    pub fn bytes_per_row(&self) -> anyhow::Result<u32> {
+    pub fn bytes_per_row(&self, mip_index: usize) -> anyhow::Result<u32> {
         let block_dim = self.format.block_dim();
         let block_size = self.format.block_size();
-
-        if self.width % block_dim != 0 {
-            anyhow::bail!(
-                "expected texture width ({}) to be a multiple of block width ({})",
-                self.width,
-                block_dim
-            );
-        }
-
-        let blocks_x = self.width / block_dim;
+        let mip_width = self.width / 2u32.pow(mip_index as u32);
+        let blocks_x = mip_width.div_ceil(block_dim);
         let bytes_per_row = blocks_x * block_size;
         Ok(bytes_per_row)
     }
 
-    pub fn rows_per_image(&self) -> anyhow::Result<u32> {
+    pub fn rows_per_image(&self, mip_index: usize) -> anyhow::Result<u32> {
         let block_dim = self.format.block_dim();
-
-        if self.height % block_dim != 0 {
-            anyhow::bail!(
-                "expected texture height ({}) to be a multiple of block height ({})",
-                self.height,
-                block_dim
-            );
-        }
-
-        let blocks_y = self.height / block_dim;
+        let mip_height = self.height / 2u32.pow(mip_index as u32);
+        let blocks_y = mip_height.div_ceil(block_dim);
         Ok(blocks_y)
     }
 

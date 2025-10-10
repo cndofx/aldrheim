@@ -339,26 +339,49 @@ impl GraphicsContext {
                 size: texture_size,
                 format: texture_format,
                 dimension: wgpu::TextureDimension::D2,
-                mip_level_count: 1,
+                mip_level_count: xnb_texture.mips.len() as u32,
                 sample_count: 1,
                 view_formats: &[],
             });
 
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &xnb_texture.mips[0],
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(xnb_texture.bytes_per_row()?),
-                    rows_per_image: Some(xnb_texture.rows_per_image()?),
-                },
-                texture_size,
-            );
+            for (i, mip) in xnb_texture.mips.iter().enumerate() {
+                println!(
+                    "mip {} size: {}, bytes_per_row: {}, rows_per_image: {}",
+                    i,
+                    mip.len(),
+                    xnb_texture.bytes_per_row(i)?,
+                    xnb_texture.rows_per_image(i)?,
+                );
+            }
+
+            for (i, mip) in xnb_texture.mips.iter().enumerate() {
+                // TODO: is this the correct thing to do here?
+                // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
+                let mip_size = wgpu::Extent3d {
+                    width: (xnb_texture.width / 2u32.pow(i as u32))
+                        .max(xnb_texture.format.block_dim()),
+                    height: (xnb_texture.height / 2u32.pow(i as u32))
+                        .max(xnb_texture.format.block_dim()),
+                    depth_or_array_layers: 1,
+                };
+                dbg!(i, mip_size);
+
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: i as u32,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    mip,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(xnb_texture.bytes_per_row(i)?),
+                        rows_per_image: Some(xnb_texture.rows_per_image(i)?),
+                    },
+                    mip_size,
+                );
+            }
 
             texture
         };
@@ -370,8 +393,8 @@ impl GraphicsContext {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 

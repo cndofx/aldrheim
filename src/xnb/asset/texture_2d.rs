@@ -38,7 +38,7 @@ impl Texture2D {
     pub fn bytes_per_row(&self, mip_index: usize) -> anyhow::Result<u32> {
         let block_dim = self.format.block_dim();
         let block_size = self.format.block_size();
-        let mip_width = self.width / 2u32.pow(mip_index as u32);
+        let mip_width = self.width.div_ceil(2u32.pow(mip_index as u32));
         let blocks_x = mip_width.div_ceil(block_dim);
         let bytes_per_row = blocks_x * block_size;
         Ok(bytes_per_row)
@@ -46,7 +46,7 @@ impl Texture2D {
 
     pub fn rows_per_image(&self, mip_index: usize) -> anyhow::Result<u32> {
         let block_dim = self.format.block_dim();
-        let mip_height = self.height / 2u32.pow(mip_index as u32);
+        let mip_height = self.height.div_ceil(2u32.pow(mip_index as u32));
         let blocks_y = mip_height.div_ceil(block_dim);
         Ok(blocks_y)
     }
@@ -142,7 +142,7 @@ impl PixelFormat {
         match self {
             PixelFormat::Color => 4,
             PixelFormat::Bc1 => 8,
-            PixelFormat::Bc3 => 8,
+            PixelFormat::Bc3 => 16,
         }
     }
 }

@@ -372,7 +372,7 @@ struct GraphicsContext {
     camera_uniform_buffer: wgpu::Buffer,
     camera_uniform_bind_group: wgpu::BindGroup,
     depth_texture: wgpu::Texture,
-    // texture_bind_group: wgpu::BindGroup,
+    texture_bind_group: wgpu::BindGroup,
     window: Arc<Window>,
 }
 
@@ -428,31 +428,52 @@ impl GraphicsContext {
 
         //
 
-        let mut path = magicka_path.to_owned();
-        // path.push("Content/Models/Items_Wizard/staff_basic_0.xnb");
-        path.push("Content/Models/Items_Wizard/staff_plus_0.xnb");
-        // path.push("Content/Models/Items_Wizard/staff_of_deflection_0.xnb");
-        // path.push("Content/Models/Items_Wizard/knife_of_counterstriking_1.xnb");
-        // path.push("Content/Models/Items_Wizard/m16_1.xnb");
-        let file = std::fs::File::open(&path)?;
+        println!("wtf");
+        let mut xnb_path = magicka_path.to_owned();
+        // xnb_path.push("Content/Models/Items_Wizard/staff_basic_0.xnb");
+        xnb_path.push("Content/Models/Items_Wizard/staff_plus_0.xnb");
+        // xnb_path.push("Content/Models/Items_Wizard/staff_of_deflection_0.xnb");
+        // xnb_path.push("Content/Models/Items_Wizard/knife_of_counterstriking_1.xnb");
+        // xnb_path.push("Content/Models/Items_Wizard/m16_1.xnb");
+        // xnb_path.push("Content/Models/Items_Wizard/Beard_0.xnb"); // bc3 texture mipmaps were broken, fixed?
+        // xnb_path.push("Content/Models/Items_Wizard/doom_mask_0.xnb"); // dependency paths were broken on case sensitive filesystems, fixed?
+        // xnb_path.push("Content/Models/Items_Wizard/magickbook_major.xnb");
+        let file = std::fs::File::open(&xnb_path)?;
         let mut reader = BufReader::new(file);
-        let xnb = Xnb::read(&mut reader)?;
-        let content = xnb.parse_content()?;
-        let XnbAsset::Model(xnb_model) = content.primary_asset else {
-            anyhow::bail!("expected model at path {}", path.display());
+        let model_xnb = Xnb::read(&mut reader)?;
+        let model_content = model_xnb.parse_content()?;
+        let XnbAsset::Model(xnb_model) = model_content.primary_asset else {
+            anyhow::bail!("expected model at path {}", xnb_path.display());
+        };
+        let XnbAsset::RenderDeferredEffect(effect) = &model_content.shared_assets[0] else {
+            anyhow::bail!("expected render deferred effect");
         };
         let xnb_mesh = &xnb_model.meshes[0];
         let xnb_part = &xnb_mesh.parts[0];
         let xnb_vertex_decl = &xnb_model.vertex_decls[xnb_part.vertex_decl_index as usize];
+        xnb_path.pop();
+
+        let texture_path = resolve_xnb_relative_path(
+            &xnb_path,
+            &format!("{}.xnb", effect.material_0.diffuse_texture),
+        )?;
+        println!("loading texture from {}", texture_path.display());
+        let file = std::fs::File::open(&texture_path)?;
+        let mut reader = BufReader::new(file);
+        let texture_xnb = Xnb::read(&mut reader)?;
+        let texture_content = texture_xnb.parse_content()?;
+        let XnbAsset::Texture2D(texture_asset) = texture_content.primary_asset else {
+            anyhow::bail!("expected texture2d at path {}", texture_path.display());
+        };
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Loaded XNB Vertex Buffer"),
+            label: Some("Vertex Buffer"),
             contents: &xnb_mesh.vertex_buffer.data,
             usage: wgpu::BufferUsages::STORAGE,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Loaded XNB Index Buffer"),
+            label: Some("Index Buffer"),
             contents: &xnb_mesh.index_buffer.data,
             usage: wgpu::BufferUsages::INDEX,
         });
@@ -476,7 +497,7 @@ impl GraphicsContext {
                 }],
             });
         let vertex_buffer_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Vertex Layout Uniform Bind Group"),
+            label: Some("Vertex Buffer Bind Group"),
             layout: &vertex_buffer_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -517,127 +538,117 @@ impl GraphicsContext {
                 }],
             });
 
-        // let texture = {
-        //     let mut path = magicka_path.to_owned();
-        //     path.push("Content/UI/Menu/CampaignMap.xnb");
-        //     let file = std::fs::File::open(&path)?;
-        //     let mut reader = BufReader::new(file);
-        //     let xnb = Xnb::read(&mut reader)?;
-        //     let content = xnb.parse_content()?;
-        //     let XnbAsset::Texture2D(xnb_texture) = content.primary_asset else {
-        //         anyhow::bail!("expected texture 2d at path {}", path.display());
-        //     };
+        let texture = {
+            let texture_format = texture_asset.format.to_wgpu();
+            dbg!(texture_format);
 
-        //     let texture_format = xnb_texture.format.to_wgpu();
-        //     dbg!(texture_format);
+            let texture_size = wgpu::Extent3d {
+                width: texture_asset.width,
+                height: texture_asset.height,
+                depth_or_array_layers: 1,
+            };
 
-        //     let texture_size = wgpu::Extent3d {
-        //         width: xnb_texture.width,
-        //         height: xnb_texture.height,
-        //         depth_or_array_layers: 1,
-        //     };
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Diffuse Texture"),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                size: texture_size,
+                format: texture_format,
+                dimension: wgpu::TextureDimension::D2,
+                mip_level_count: texture_asset.mips.len() as u32,
+                sample_count: 1,
+                view_formats: &[],
+            });
 
-        //     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        //         label: Some("Campaign Map"),
-        //         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        //         size: texture_size,
-        //         format: texture_format,
-        //         dimension: wgpu::TextureDimension::D2,
-        //         mip_level_count: xnb_texture.mips.len() as u32,
-        //         sample_count: 1,
-        //         view_formats: &[],
-        //     });
+            for (i, mip) in texture_asset.mips.iter().enumerate() {
+                println!(
+                    "mip {} size: {}, bytes_per_row: {}, rows_per_image: {}",
+                    i,
+                    mip.len(),
+                    texture_asset.bytes_per_row(i)?,
+                    texture_asset.rows_per_image(i)?,
+                );
+            }
 
-        //     for (i, mip) in xnb_texture.mips.iter().enumerate() {
-        //         println!(
-        //             "mip {} size: {}, bytes_per_row: {}, rows_per_image: {}",
-        //             i,
-        //             mip.len(),
-        //             xnb_texture.bytes_per_row(i)?,
-        //             xnb_texture.rows_per_image(i)?,
-        //         );
-        //     }
+            for (i, mip) in texture_asset.mips.iter().enumerate() {
+                // TODO: is this the correct thing to do here?
+                // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
+                let mip_size = wgpu::Extent3d {
+                    width: (texture_asset.width / 2u32.pow(i as u32))
+                        .max(texture_asset.format.block_dim()),
+                    height: (texture_asset.height / 2u32.pow(i as u32))
+                        .max(texture_asset.format.block_dim()),
+                    depth_or_array_layers: 1,
+                };
+                dbg!(i, mip_size);
 
-        //     for (i, mip) in xnb_texture.mips.iter().enumerate() {
-        //         // TODO: is this the correct thing to do here?
-        //         // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
-        //         let mip_size = wgpu::Extent3d {
-        //             width: (xnb_texture.width / 2u32.pow(i as u32))
-        //                 .max(xnb_texture.format.block_dim()),
-        //             height: (xnb_texture.height / 2u32.pow(i as u32))
-        //                 .max(xnb_texture.format.block_dim()),
-        //             depth_or_array_layers: 1,
-        //         };
-        //         dbg!(i, mip_size);
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: i as u32,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    mip,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(texture_asset.bytes_per_row(i)?),
+                        rows_per_image: Some(texture_asset.rows_per_image(i)?),
+                    },
+                    mip_size,
+                );
+            }
 
-        //         queue.write_texture(
-        //             wgpu::TexelCopyTextureInfo {
-        //                 texture: &texture,
-        //                 mip_level: i as u32,
-        //                 origin: wgpu::Origin3d::ZERO,
-        //                 aspect: wgpu::TextureAspect::All,
-        //             },
-        //             mip,
-        //             wgpu::TexelCopyBufferLayout {
-        //                 offset: 0,
-        //                 bytes_per_row: Some(xnb_texture.bytes_per_row(i)?),
-        //                 rows_per_image: Some(xnb_texture.rows_per_image(i)?),
-        //             },
-        //             mip_size,
-        //         );
-        //     }
+            texture
+        };
 
-        //     texture
-        // };
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: None,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
 
-        // let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        //     label: None,
-        //     address_mode_u: wgpu::AddressMode::ClampToEdge,
-        //     address_mode_v: wgpu::AddressMode::ClampToEdge,
-        //     address_mode_w: wgpu::AddressMode::ClampToEdge,
-        //     mag_filter: wgpu::FilterMode::Linear,
-        //     min_filter: wgpu::FilterMode::Linear,
-        //     mipmap_filter: wgpu::FilterMode::Linear,
-        //     ..Default::default()
-        // });
-
-        // let texture_bind_group_layout =
-        //     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //         label: Some("Texture Bind Group Layout"),
-        //         entries: &[
-        //             wgpu::BindGroupLayoutEntry {
-        //                 binding: 0,
-        //                 visibility: wgpu::ShaderStages::FRAGMENT,
-        //                 ty: wgpu::BindingType::Texture {
-        //                     sample_type: wgpu::TextureSampleType::Float { filterable: true },
-        //                     view_dimension: wgpu::TextureViewDimension::D2,
-        //                     multisampled: false,
-        //                 },
-        //                 count: None,
-        //             },
-        //             wgpu::BindGroupLayoutEntry {
-        //                 binding: 1,
-        //                 visibility: wgpu::ShaderStages::FRAGMENT,
-        //                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-        //                 count: None,
-        //             },
-        //         ],
-        //     });
-        // let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     label: Some("Texture Bind Group"),
-        //     layout: &texture_bind_group_layout,
-        //     entries: &[
-        //         wgpu::BindGroupEntry {
-        //             binding: 0,
-        //             resource: wgpu::BindingResource::TextureView(&texture_view),
-        //         },
-        //         wgpu::BindGroupEntry {
-        //             binding: 1,
-        //             resource: wgpu::BindingResource::Sampler(&texture_sampler),
-        //         },
-        //     ],
-        // });
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture_sampler),
+                },
+            ],
+        });
 
         let camera_uniform = CameraUniform {
             view: Mat4::IDENTITY,
@@ -678,10 +689,10 @@ impl GraphicsContext {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
-                // &texture_bind_group_layout,
                 &vertex_buffer_bind_group_layout,
                 &vertex_layout_uniform_bind_group_layout,
                 &camera_uniform_bind_group_layout,
+                &texture_bind_group_layout,
             ],
             push_constant_ranges: &[],
         });
@@ -745,7 +756,7 @@ impl GraphicsContext {
             camera_uniform_buffer,
             camera_uniform_bind_group,
             depth_texture,
-            // texture_bind_group,
+            texture_bind_group,
             window,
         };
         Ok(ctx)
@@ -834,11 +845,10 @@ impl GraphicsContext {
             });
 
             render_pass.set_pipeline(&self.pipeline);
-            // render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
             render_pass.set_bind_group(0, &self.vertex_buffer_bind_group, &[]);
             render_pass.set_bind_group(1, &self.vertex_layout_uniform_bind_group, &[]);
             render_pass.set_bind_group(2, &self.camera_uniform_bind_group, &[]);
-            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_bind_group(3, &self.texture_bind_group, &[]);
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(
                 self.start_index..self.start_index + self.index_count,
@@ -904,9 +914,10 @@ impl VertexLayoutUniform {
                         tex_coord_0 = el.offset as i32;
                     } else if tex_coord_1 < 0 {
                         tex_coord_1 = el.offset as i32;
-                    } else {
-                        anyhow::bail!("duplicate 'tex_coord' elements in vertex declaration");
                     }
+                    // else {
+                    //     anyhow::bail!("duplicate 'tex_coord' elements in vertex declaration");
+                    // }
                 }
                 ElementUsage::Color => {
                     if color < 0 {
@@ -976,4 +987,49 @@ fn create_depth_texture(
     // });
 
     texture
+}
+
+// because the relative paths in xnb files rely on windows fs case insensitivity
+// and this does not work on case sensitive filesystems
+fn resolve_xnb_relative_path(base: &Path, relative: &str) -> anyhow::Result<PathBuf> {
+    let relative = PathBuf::from(relative.replace("\\", "/"));
+
+    let joined = base.join(&relative);
+    if joined.exists() {
+        return Ok(joined);
+    }
+
+    let mut current_path = base.to_owned();
+    for component in relative.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                current_path.pop();
+            }
+            std::path::Component::Normal(insensitive_component) => {
+                let lower_component = insensitive_component.to_ascii_lowercase();
+
+                let mut found: Option<std::ffi::OsString> = None;
+                for entry in std::fs::read_dir(&current_path)? {
+                    let entry_name = entry.unwrap().file_name();
+                    let lower_entry_name = entry_name.to_ascii_lowercase();
+
+                    if lower_entry_name == lower_component {
+                        found = Some(entry_name);
+                        break;
+                    }
+                }
+
+                if let Some(found) = found {
+                    current_path.push(found);
+                } else {
+                    current_path.push(insensitive_component);
+                    anyhow::bail!("unable to find path {}", current_path.display());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(current_path)
 }

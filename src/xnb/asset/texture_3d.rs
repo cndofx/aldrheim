@@ -4,6 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::xnb::asset::texture_2d::PixelFormat;
 
+#[derive(Debug)]
 pub struct Texture3D {
     pub format: PixelFormat,
     pub width: u32,

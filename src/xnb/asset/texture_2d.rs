@@ -4,6 +4,7 @@ use bcndecode::{BcnDecoderFormat, BcnEncoding};
 use byteorder::{LittleEndian, ReadBytesExt};
 use strum::FromRepr;
 
+#[derive(Debug)]
 pub struct Texture2D {
     pub format: PixelFormat,
     pub width: u32,

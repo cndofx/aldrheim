@@ -240,12 +240,15 @@ struct GraphicsContext {
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
-    vertex_count: u32,
+    // vertex_count: u32,
     index_buffer: wgpu::Buffer,
     index_count: u32,
-    texture_bind_group: wgpu::BindGroup,
+    start_index: u32,
+    base_vertex: u32,
+    // texture_bind_group: wgpu::BindGroup,
     camera_uniform_buffer: wgpu::Buffer,
     camera_uniform_bind_group: wgpu::BindGroup,
+    depth_texture: wgpu::Texture,
     window: Arc<Window>,
 }
 
@@ -299,141 +302,172 @@ impl GraphicsContext {
             view_formats: Vec::new(),
         };
 
+        //
+
+        let mut path = magicka_path.to_owned();
+        // path.push("Content/Models/Items_Wizard/staff_basic_0.xnb");
+        path.push("Content/Models/Items_Wizard/staff_plus_0.xnb");
+        // path.push("Content/Models/Items_Wizard/staff_of_deflection_0.xnb");
+        // path.push("Content/Models/Items_Wizard/knife_of_counterstriking_1.xnb");
+        // path.push("Content/Models/Items_Wizard/m16_1.xnb"); // not yet working
+        let file = std::fs::File::open(&path)?;
+        let mut reader = BufReader::new(file);
+        let xnb = Xnb::read(&mut reader)?;
+        let content = xnb.parse_content()?;
+        let XnbAsset::Model(xnb_model) = content.primary_asset else {
+            anyhow::bail!("expected model at path {}", path.display());
+        };
+        let xnb_mesh = &xnb_model.meshes[0];
+        let xnb_part = &xnb_mesh.parts[0];
+        let xnb_vertex_decl = &xnb_model.vertex_decls[xnb_part.vertex_decl_index as usize];
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            label: Some("Loaded XNB Vertex Buffer"),
+            contents: &xnb_mesh.vertex_buffer.data,
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let vertex_count = VERTICES.len() as u32;
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
+            label: Some("Loaded XNB Index Buffer"),
+            contents: &xnb_mesh.index_buffer.data,
             usage: wgpu::BufferUsages::INDEX,
         });
-        let index_count = INDICES.len() as u32;
 
-        let texture = {
-            let mut path = magicka_path.to_owned();
-            path.push("Content/UI/Menu/CampaignMap.xnb");
-            let file = std::fs::File::open(&path)?;
-            let mut reader = BufReader::new(file);
-            let xnb = Xnb::read(&mut reader)?;
-            let content = xnb.parse_content()?;
-            let XnbAsset::Texture2D(xnb_texture) = content.primary_asset else {
-                anyhow::bail!("expected texture 2d at path {}", path.display());
-            };
+        let index_count = xnb_part.primitive_count * 3;
+        let start_index = xnb_part.start_index;
+        let base_vertex = xnb_part.base_vertex;
 
-            let texture_format = xnb_texture.format.to_wgpu();
-            dbg!(texture_format);
-
-            let texture_size = wgpu::Extent3d {
-                width: xnb_texture.width,
-                height: xnb_texture.height,
-                depth_or_array_layers: 1,
-            };
-
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Campaign Map"),
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                size: texture_size,
-                format: texture_format,
-                dimension: wgpu::TextureDimension::D2,
-                mip_level_count: xnb_texture.mips.len() as u32,
-                sample_count: 1,
-                view_formats: &[],
-            });
-
-            for (i, mip) in xnb_texture.mips.iter().enumerate() {
-                println!(
-                    "mip {} size: {}, bytes_per_row: {}, rows_per_image: {}",
-                    i,
-                    mip.len(),
-                    xnb_texture.bytes_per_row(i)?,
-                    xnb_texture.rows_per_image(i)?,
-                );
-            }
-
-            for (i, mip) in xnb_texture.mips.iter().enumerate() {
-                // TODO: is this the correct thing to do here?
-                // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
-                let mip_size = wgpu::Extent3d {
-                    width: (xnb_texture.width / 2u32.pow(i as u32))
-                        .max(xnb_texture.format.block_dim()),
-                    height: (xnb_texture.height / 2u32.pow(i as u32))
-                        .max(xnb_texture.format.block_dim()),
-                    depth_or_array_layers: 1,
-                };
-                dbg!(i, mip_size);
-
-                queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &texture,
-                        mip_level: i as u32,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    mip,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(xnb_texture.bytes_per_row(i)?),
-                        rows_per_image: Some(xnb_texture.rows_per_image(i)?),
-                    },
-                    mip_size,
-                );
-            }
-
-            texture
+        let vertex_attributes = xnb_vertex_decl.to_wgpu();
+        dbg!(&content.shared_assets, &xnb_vertex_decl, &vertex_attributes);
+        let vertex_layout = wgpu::VertexBufferLayout {
+            array_stride: xnb_vertex_decl.stride() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &vertex_attributes,
         };
 
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: None,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let depth_texture = create_depth_texture(&device, &surface_config);
 
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Texture Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Texture Bind Group"),
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&texture_sampler),
-                },
-            ],
-        });
+        // let texture = {
+        //     let mut path = magicka_path.to_owned();
+        //     path.push("Content/UI/Menu/CampaignMap.xnb");
+        //     let file = std::fs::File::open(&path)?;
+        //     let mut reader = BufReader::new(file);
+        //     let xnb = Xnb::read(&mut reader)?;
+        //     let content = xnb.parse_content()?;
+        //     let XnbAsset::Texture2D(xnb_texture) = content.primary_asset else {
+        //         anyhow::bail!("expected texture 2d at path {}", path.display());
+        //     };
+
+        //     let texture_format = xnb_texture.format.to_wgpu();
+        //     dbg!(texture_format);
+
+        //     let texture_size = wgpu::Extent3d {
+        //         width: xnb_texture.width,
+        //         height: xnb_texture.height,
+        //         depth_or_array_layers: 1,
+        //     };
+
+        //     let texture = device.create_texture(&wgpu::TextureDescriptor {
+        //         label: Some("Campaign Map"),
+        //         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        //         size: texture_size,
+        //         format: texture_format,
+        //         dimension: wgpu::TextureDimension::D2,
+        //         mip_level_count: xnb_texture.mips.len() as u32,
+        //         sample_count: 1,
+        //         view_formats: &[],
+        //     });
+
+        //     for (i, mip) in xnb_texture.mips.iter().enumerate() {
+        //         println!(
+        //             "mip {} size: {}, bytes_per_row: {}, rows_per_image: {}",
+        //             i,
+        //             mip.len(),
+        //             xnb_texture.bytes_per_row(i)?,
+        //             xnb_texture.rows_per_image(i)?,
+        //         );
+        //     }
+
+        //     for (i, mip) in xnb_texture.mips.iter().enumerate() {
+        //         // TODO: is this the correct thing to do here?
+        //         // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
+        //         let mip_size = wgpu::Extent3d {
+        //             width: (xnb_texture.width / 2u32.pow(i as u32))
+        //                 .max(xnb_texture.format.block_dim()),
+        //             height: (xnb_texture.height / 2u32.pow(i as u32))
+        //                 .max(xnb_texture.format.block_dim()),
+        //             depth_or_array_layers: 1,
+        //         };
+        //         dbg!(i, mip_size);
+
+        //         queue.write_texture(
+        //             wgpu::TexelCopyTextureInfo {
+        //                 texture: &texture,
+        //                 mip_level: i as u32,
+        //                 origin: wgpu::Origin3d::ZERO,
+        //                 aspect: wgpu::TextureAspect::All,
+        //             },
+        //             mip,
+        //             wgpu::TexelCopyBufferLayout {
+        //                 offset: 0,
+        //                 bytes_per_row: Some(xnb_texture.bytes_per_row(i)?),
+        //                 rows_per_image: Some(xnb_texture.rows_per_image(i)?),
+        //             },
+        //             mip_size,
+        //         );
+        //     }
+
+        //     texture
+        // };
+
+        // let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        //     label: None,
+        //     address_mode_u: wgpu::AddressMode::ClampToEdge,
+        //     address_mode_v: wgpu::AddressMode::ClampToEdge,
+        //     address_mode_w: wgpu::AddressMode::ClampToEdge,
+        //     mag_filter: wgpu::FilterMode::Linear,
+        //     min_filter: wgpu::FilterMode::Linear,
+        //     mipmap_filter: wgpu::FilterMode::Linear,
+        //     ..Default::default()
+        // });
+
+        // let texture_bind_group_layout =
+        //     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        //         label: Some("Texture Bind Group Layout"),
+        //         entries: &[
+        //             wgpu::BindGroupLayoutEntry {
+        //                 binding: 0,
+        //                 visibility: wgpu::ShaderStages::FRAGMENT,
+        //                 ty: wgpu::BindingType::Texture {
+        //                     sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        //                     view_dimension: wgpu::TextureViewDimension::D2,
+        //                     multisampled: false,
+        //                 },
+        //                 count: None,
+        //             },
+        //             wgpu::BindGroupLayoutEntry {
+        //                 binding: 1,
+        //                 visibility: wgpu::ShaderStages::FRAGMENT,
+        //                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        //                 count: None,
+        //             },
+        //         ],
+        //     });
+        // let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     label: Some("Texture Bind Group"),
+        //     layout: &texture_bind_group_layout,
+        //     entries: &[
+        //         wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: wgpu::BindingResource::TextureView(&texture_view),
+        //         },
+        //         wgpu::BindGroupEntry {
+        //             binding: 1,
+        //             resource: wgpu::BindingResource::Sampler(&texture_sampler),
+        //         },
+        //     ],
+        // });
 
         let camera_uniform = CameraUniform {
             view: Mat4::IDENTITY,
@@ -469,11 +503,12 @@ impl GraphicsContext {
             }],
         });
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shader.wgsl"));
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("shaders/render_deferred_effect.wgsl"));
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
-                &texture_bind_group_layout,
+                // &texture_bind_group_layout,
                 &camera_uniform_bind_group_layout,
             ],
             push_constant_ranges: &[],
@@ -484,7 +519,7 @@ impl GraphicsContext {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Vertex::layout()],
+                buffers: &[vertex_layout],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -501,13 +536,19 @@ impl GraphicsContext {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
+                cull_mode: Some(wgpu::Face::Back),
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
             },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
-            depth_stencil: None,
             multiview: None,
             cache: None,
         });
@@ -520,12 +561,14 @@ impl GraphicsContext {
             queue,
             pipeline,
             vertex_buffer,
-            vertex_count,
             index_buffer,
             index_count,
-            texture_bind_group,
+            start_index,
+            base_vertex,
+            // texture_bind_group,
             camera_uniform_buffer,
             camera_uniform_bind_group,
+            depth_texture,
             window,
         };
         Ok(ctx)
@@ -540,6 +583,8 @@ impl GraphicsContext {
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
         self.is_surface_configured = true;
+
+        self.depth_texture = create_depth_texture(&self.device, &self.surface_config);
     }
 
     pub fn render(&mut self, time: f32) -> Result<(), wgpu::SurfaceError> {
@@ -574,6 +619,10 @@ impl GraphicsContext {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        let depth_texture_view = self
+            .depth_texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
         let mut command_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -594,18 +643,29 @@ impl GraphicsContext {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 label: None,
-                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
 
             render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_uniform_bind_group, &[]);
+            // render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.index_count, 0, 0..1);
+            render_pass.draw_indexed(
+                self.start_index..self.start_index + self.index_count,
+                self.base_vertex as i32,
+                0..1,
+            );
         }
 
         self.queue.submit([command_encoder.finish()]);
@@ -624,51 +684,38 @@ struct CameraUniform {
     projection: Mat4,
 }
 
-#[repr(C)]
-#[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
-struct Vertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
+fn create_depth_texture(
+    device: &wgpu::Device,
+    surface_config: &wgpu::SurfaceConfiguration,
+) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Depth Buffer"),
+        size: wgpu::Extent3d {
+            width: surface_config.width.max(1),
+            height: surface_config.height.max(1),
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth32Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+
+    // let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+    //     label: Some("Depth Sampler"),
+    //     address_mode_u: wgpu::AddressMode::ClampToEdge,
+    //     address_mode_v: wgpu::AddressMode::ClampToEdge,
+    //     address_mode_w: wgpu::AddressMode::ClampToEdge,
+    //     mag_filter: wgpu::FilterMode::Linear,
+    //     min_filter: wgpu::FilterMode::Linear,
+    //     mipmap_filter: wgpu::FilterMode::Nearest,
+    //     compare: Some(wgpu::CompareFunction::LessEqual),
+    //     lod_min_clamp: 0.0,
+    //     lod_max_clamp: 100.0,
+    //     ..Default::default()
+    // });
+
+    texture
 }
-
-impl Vertex {
-    pub fn layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-            ],
-        }
-    }
-}
-
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [-1.0, 1.0, 0.0],
-        tex_coords: [0.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 1.0, 0.0],
-        tex_coords: [1.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, -1.0, 0.0],
-        tex_coords: [1.0, 1.0],
-    },
-    Vertex {
-        position: [-1.0, -1.0, 0.0],
-        tex_coords: [0.0, 1.0],
-    },
-];
-
-const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];

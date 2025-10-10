@@ -17,6 +17,26 @@ impl VertexDeclaration {
         }
         Ok(VertexDeclaration { elements })
     }
+
+    pub fn stride(&self) -> usize {
+        self.elements
+            .iter()
+            .map(|el| el.offset as usize + el.format.size())
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub fn to_wgpu(&self) -> Vec<wgpu::VertexAttribute> {
+        self.elements
+            .iter()
+            .enumerate()
+            .map(|(i, xnb)| wgpu::VertexAttribute {
+                shader_location: i as u32,
+                offset: xnb.offset as wgpu::BufferAddress,
+                format: xnb.format.to_wgpu(),
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug)]
@@ -76,6 +96,28 @@ impl ElementFormat {
         let format = ElementFormat::from_repr(value as u8)
             .ok_or_else(|| anyhow::anyhow!("unknown element format: {value}"))?;
         Ok(format)
+    }
+
+    pub fn size(self) -> usize {
+        match self {
+            ElementFormat::Single => 4,
+            ElementFormat::Vector2 => 8,
+            ElementFormat::Vector3 => 12,
+            ElementFormat::Vector4 => 16,
+            ElementFormat::Byte4 => 4,
+            other => unimplemented!("element format size: {other:?}"),
+        }
+    }
+
+    pub fn to_wgpu(self) -> wgpu::VertexFormat {
+        match self {
+            ElementFormat::Single => wgpu::VertexFormat::Float32,
+            ElementFormat::Vector2 => wgpu::VertexFormat::Float32x2,
+            ElementFormat::Vector3 => wgpu::VertexFormat::Float32x3,
+            ElementFormat::Vector4 => wgpu::VertexFormat::Float32x4,
+            ElementFormat::Byte4 => wgpu::VertexFormat::Uint8x4,
+            _ => unimplemented!("unsupported vertex element format: {self:?}"),
+        }
     }
 }
 

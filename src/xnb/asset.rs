@@ -31,6 +31,7 @@ const INDEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.IndexBuf
 
 const RENDER_DEFERRED_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.RenderDeferredEffectReader";
 
+#[derive(Debug)]
 pub enum XnbAsset {
     Null,
     String(String),

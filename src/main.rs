@@ -22,7 +22,10 @@ use winit::{
 
 use crate::xnb::{
     Xnb,
-    asset::{XnbAsset, texture_2d, vertex_decl::VertexDeclaration},
+    asset::{
+        XnbAsset, texture_2d,
+        vertex_decl::{ElementUsage, VertexDeclaration},
+    },
 };
 
 mod read_ext;
@@ -359,15 +362,17 @@ struct GraphicsContext {
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
-    // vertex_count: u32,
+    vertex_buffer_bind_group: wgpu::BindGroup,
+    vertex_layout_uniform_buffer: wgpu::Buffer,
+    vertex_layout_uniform_bind_group: wgpu::BindGroup,
     index_buffer: wgpu::Buffer,
     index_count: u32,
     start_index: u32,
     base_vertex: u32,
-    // texture_bind_group: wgpu::BindGroup,
     camera_uniform_buffer: wgpu::Buffer,
     camera_uniform_bind_group: wgpu::BindGroup,
     depth_texture: wgpu::Texture,
+    // texture_bind_group: wgpu::BindGroup,
     window: Arc<Window>,
 }
 
@@ -428,7 +433,7 @@ impl GraphicsContext {
         path.push("Content/Models/Items_Wizard/staff_plus_0.xnb");
         // path.push("Content/Models/Items_Wizard/staff_of_deflection_0.xnb");
         // path.push("Content/Models/Items_Wizard/knife_of_counterstriking_1.xnb");
-        // path.push("Content/Models/Items_Wizard/m16_1.xnb"); // not yet working
+        // path.push("Content/Models/Items_Wizard/m16_1.xnb");
         let file = std::fs::File::open(&path)?;
         let mut reader = BufReader::new(file);
         let xnb = Xnb::read(&mut reader)?;
@@ -443,7 +448,7 @@ impl GraphicsContext {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Loaded XNB Vertex Buffer"),
             contents: &xnb_mesh.vertex_buffer.data,
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::STORAGE,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -456,15 +461,61 @@ impl GraphicsContext {
         let start_index = xnb_part.start_index;
         let base_vertex = xnb_part.base_vertex;
 
-        let vertex_attributes = xnb_vertex_decl.to_wgpu();
-        dbg!(&content.shared_assets, &xnb_vertex_decl, &vertex_attributes);
-        let vertex_layout = wgpu::VertexBufferLayout {
-            array_stride: xnb_vertex_decl.stride() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &vertex_attributes,
-        };
+        let vertex_buffer_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Vertex Buffer Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let vertex_buffer_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Vertex Layout Uniform Bind Group"),
+            layout: &vertex_buffer_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
+            }],
+        });
 
-        let depth_texture = create_depth_texture(&device, &surface_config);
+        let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(xnb_vertex_decl)?;
+        let vertex_layout_uniform_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Layout Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[vertex_layout_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+        let vertex_layout_uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Vertex Layout Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let vertex_layout_uniform_bind_group =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Vertex Layout Uniform Bind Group"),
+                layout: &vertex_layout_uniform_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(
+                        vertex_layout_uniform_buffer.as_entire_buffer_binding(),
+                    ),
+                }],
+            });
 
         // let texture = {
         //     let mut path = magicka_path.to_owned();
@@ -628,6 +679,8 @@ impl GraphicsContext {
             label: None,
             bind_group_layouts: &[
                 // &texture_bind_group_layout,
+                &vertex_buffer_bind_group_layout,
+                &vertex_layout_uniform_bind_group_layout,
                 &camera_uniform_bind_group_layout,
             ],
             push_constant_ranges: &[],
@@ -638,7 +691,7 @@ impl GraphicsContext {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[vertex_layout],
+                buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -672,6 +725,8 @@ impl GraphicsContext {
             cache: None,
         });
 
+        let depth_texture = create_depth_texture(&device, &surface_config);
+
         let ctx = GraphicsContext {
             surface,
             surface_config,
@@ -680,14 +735,17 @@ impl GraphicsContext {
             queue,
             pipeline,
             vertex_buffer,
+            vertex_buffer_bind_group,
+            vertex_layout_uniform_buffer,
+            vertex_layout_uniform_bind_group,
             index_buffer,
             index_count,
             start_index,
             base_vertex,
-            // texture_bind_group,
             camera_uniform_buffer,
             camera_uniform_bind_group,
             depth_texture,
+            // texture_bind_group,
             window,
         };
         Ok(ctx)
@@ -777,8 +835,10 @@ impl GraphicsContext {
 
             render_pass.set_pipeline(&self.pipeline);
             // render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-            render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_bind_group(0, &self.vertex_buffer_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.vertex_layout_uniform_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.camera_uniform_bind_group, &[]);
+            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(
                 self.start_index..self.start_index + self.index_count,
@@ -801,6 +861,85 @@ impl GraphicsContext {
 struct CameraUniform {
     view: Mat4,
     projection: Mat4,
+}
+
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
+struct VertexLayoutUniform {
+    stride: u32,
+    position: i32,
+    normal: i32,
+    color: i32,
+    tex_coord_0: i32,
+    tex_coord_1: i32,
+}
+
+impl VertexLayoutUniform {
+    fn from_xnb_decl(decl: &VertexDeclaration) -> anyhow::Result<Self> {
+        // TODO: this is terrible
+
+        let mut position = -1;
+        let mut normal = -1;
+        let mut color = -1;
+        let mut tex_coord_0 = -1;
+        let mut tex_coord_1 = -1;
+        for el in &decl.elements {
+            match el.usage {
+                ElementUsage::Position => {
+                    if position < 0 {
+                        position = el.offset as i32;
+                    } else {
+                        anyhow::bail!("duplicate 'position' elements in vertex declaration");
+                    }
+                }
+                ElementUsage::Normal => {
+                    if normal < 0 {
+                        normal = el.offset as i32;
+                    } else {
+                        anyhow::bail!("duplicate 'normal' elements in vertex declaration");
+                    }
+                }
+                ElementUsage::TextureCoordinate => {
+                    if tex_coord_0 < 0 {
+                        tex_coord_0 = el.offset as i32;
+                    } else if tex_coord_1 < 0 {
+                        tex_coord_1 = el.offset as i32;
+                    } else {
+                        anyhow::bail!("duplicate 'tex_coord' elements in vertex declaration");
+                    }
+                }
+                ElementUsage::Color => {
+                    if color < 0 {
+                        color = el.offset as i32;
+                    } else {
+                        anyhow::bail!("duplicate 'color' elements in vertex declaration");
+                    }
+                }
+                _ => anyhow::bail!("unsupported vertex usage '{:?}'", el.usage),
+            }
+        }
+
+        if position == -1 {
+            anyhow::bail!("missing vertex element 'position'");
+        }
+
+        if normal == -1 {
+            anyhow::bail!("missing vertex element 'normal'");
+        }
+
+        if tex_coord_0 == -1 {
+            anyhow::bail!("missing vertex element 'tex_coord'");
+        }
+
+        Ok(VertexLayoutUniform {
+            stride: decl.stride() as u32,
+            position,
+            normal,
+            color,
+            tex_coord_0,
+            tex_coord_1,
+        })
+    }
 }
 
 fn create_depth_texture(

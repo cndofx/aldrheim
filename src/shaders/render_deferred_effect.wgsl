@@ -2,10 +2,10 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) tex_coords_0: vec2<f32>,
-    // @location(2) tex_coords_1: vec2<f32>,
 };
 
-struct CameraUniform {
+struct MvpUniform {
+    model: mat4x4<f32>,
     view: mat4x4<f32>,
     projection: mat4x4<f32>,
 };
@@ -25,8 +25,7 @@ var<storage, read> vertex_buffer: array<u32>;
 @group(1) @binding(0)
 var<uniform> vertex_layout: VertexLayoutUniform;
 
-@group(2) @binding(0)
-var<uniform> camera: CameraUniform;
+var<push_constant> mvp: mat4x4<f32>;
 
 // TODO: assumes 4 byte alignment
 fn read_vec3(byte_offset: u32) -> vec3<f32> {
@@ -54,22 +53,19 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var tex_coords_0 = read_vec2(base_offset + bitcast<u32>(vertex_layout.tex_coords_0));
 
     var out: VertexOutput;
-    out.clip_position = camera.projection * camera.view * vec4<f32>(position, 1.0);
+    out.clip_position = mvp * vec4<f32>(position, 1.0);
     out.normal = normal;
     out.tex_coords_0 = tex_coords_0;
-    // out.tex_coords_1 = tex_coords_1;
 
     return out;
 }
 
-@group(3) @binding(0)
+@group(2) @binding(0)
 var texture: texture_2d<f32>;
-@group(3) @binding(1)
+@group(2) @binding(1)
 var texture_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return textureSample(texture, texture_sampler, in.tex_coords_0);
-    // return vec4<f32>(in.tex_coords, 1.0, 1.0);
-    // return vec4<f32>(in.normal, 1.0);
 }

@@ -5,15 +5,18 @@ use crate::{
     xnb::{
         TypeReader,
         asset::{
-            index_buffer::IndexBuffer, model::Model, render_deferred_effect::RenderDeferredEffect,
-            texture_2d::Texture2D, texture_3d::Texture3D, vertex_buffer::VertexBuffer,
-            vertex_decl::VertexDeclaration,
+            bi_tree_model::BiTreeModel, index_buffer::IndexBuffer, level_model::LevelModel,
+            model::Model, render_deferred_effect::RenderDeferredEffect, texture_2d::Texture2D,
+            texture_3d::Texture3D, vertex_buffer::VertexBuffer, vertex_decl::VertexDeclaration,
         },
     },
 };
 
+pub mod animation;
+pub mod bi_tree_model;
 pub mod color;
 pub mod index_buffer;
+pub mod level_model;
 pub mod model;
 pub mod render_deferred_effect;
 pub mod texture_2d;
@@ -22,6 +25,7 @@ pub mod vertex_buffer;
 pub mod vertex_decl;
 
 const STRING_READER_NAME: &str = "Microsoft.Xna.Framework.Content.StringReader";
+const LIST_READER_NAME: &str = "Microsoft.Xna.Framework.Content.ListReader";
 const TEXTURE_2D_READER_NAME: &str = "Microsoft.Xna.Framework.Content.Texture2DReader";
 const TEXTURE_3D_READER_NAME: &str = "Microsoft.Xna.Framework.Content.Texture3DReader";
 const MODEL_READER_NAME: &str = "Microsoft.Xna.Framework.Content.ModelReader";
@@ -29,7 +33,10 @@ const VERTEX_DECL_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexDec
 const VERTEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexBufferReader";
 const INDEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.IndexBufferReader";
 
+const BI_TREE_MODEL_READER_NAME: &str = "PolygonHead.Pipeline.BiTreeModelReader";
 const RENDER_DEFERRED_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.RenderDeferredEffectReader";
+
+const LEVEL_MODEL_READER_NAME: &str = "Magicka.ContentReaders.LevelModelReader";
 
 #[derive(strum::AsRefStr, Debug)]
 pub enum XnbAsset {
@@ -41,7 +48,9 @@ pub enum XnbAsset {
     VertexDeclaration(VertexDeclaration),
     VertexBuffer(VertexBuffer),
     IndexBuffer(IndexBuffer),
+    BiTreeModel(BiTreeModel),
     RenderDeferredEffect(RenderDeferredEffect),
+    LevelModel(LevelModel),
 }
 
 impl XnbAsset {
@@ -82,9 +91,17 @@ impl XnbAsset {
                 let buffer = IndexBuffer::read(reader)?;
                 Ok(XnbAsset::IndexBuffer(buffer))
             }
+            BI_TREE_MODEL_READER_NAME => {
+                let model = BiTreeModel::read(reader, type_readers)?;
+                Ok(XnbAsset::BiTreeModel(model))
+            }
             RENDER_DEFERRED_EFFECT_READER_NAME => {
                 let effect = RenderDeferredEffect::read(reader)?;
                 Ok(XnbAsset::RenderDeferredEffect(effect))
+            }
+            LEVEL_MODEL_READER_NAME => {
+                let model = LevelModel::read(reader, type_readers)?;
+                Ok(XnbAsset::LevelModel(model))
             }
             _ => {
                 anyhow::bail!("unknown type reader: {}", type_reader.name);

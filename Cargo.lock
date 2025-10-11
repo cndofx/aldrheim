@@ -52,6 +52,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bcndecode",
+ "bitflags 2.9.4",
  "bytemuck",
  "byteorder",
  "clap",

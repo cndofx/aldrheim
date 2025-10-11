@@ -6,9 +6,11 @@ use winit::{
     event::{ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    platform::wayland::WindowAttributesExtWayland,
     window::{WindowAttributes, WindowId},
 };
+
+#[cfg(target_os = "linux")]
+use winit::platform::wayland::WindowAttributesExtWayland;
 
 use crate::{
     asset_manager::AssetManager,
@@ -53,9 +55,11 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window_attributes = WindowAttributes::default()
-            .with_title("Aldrheim")
-            .with_name("cndofx.Aldrheim", "");
+        let window_attributes = WindowAttributes::default().with_title("Aldrheim");
+
+        #[cfg(target_os = "linux")]
+        let window_attributes = window_attributes.with_name("cndofx.Aldrheim", "");
+
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
         let renderer = pollster::block_on(Renderer::new(window)).unwrap();
         self.renderer = Some(renderer);

@@ -3,10 +3,10 @@ use std::{path::PathBuf, sync::Arc, time::Instant};
 use glam::{Mat4, Quat, Vec3};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{WindowAttributes, WindowId},
+    window::{CursorGrabMode, WindowAttributes, WindowId},
 };
 
 #[cfg(target_os = "linux")]
@@ -19,10 +19,14 @@ use crate::{
 };
 
 pub struct App {
-    start_time: Instant,
     asset_manager: AssetManager,
     renderer: Option<Renderer>,
     scene: Option<Scene>,
+
+    last_time: Instant,
+    camera_input_state: InputState,
+    camera_speed: f32,
+    cursor_grabbed: bool,
 }
 
 impl App {
@@ -30,26 +34,118 @@ impl App {
         let asset_manager = AssetManager::new(magicka_path);
 
         let app = App {
-            start_time: Instant::now(),
             asset_manager,
             renderer: None,
             scene: None,
+
+            last_time: Instant::now(),
+            camera_input_state: InputState::default(),
+            camera_speed: 2.0,
+            cursor_grabbed: false,
         };
         Ok(app)
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self, dt: f64) {
+        // println!("{:.2} fps", 1.0 / dt);
+
+        let scene = self.scene.as_mut().unwrap();
+
+        let mut camera_move_direction = Vec3::ZERO;
+        if self.camera_input_state.forward {
+            camera_move_direction.z += 1.0;
+        }
+        if self.camera_input_state.backward {
+            camera_move_direction.z -= 1.0;
+        }
+        if self.camera_input_state.left {
+            camera_move_direction.x -= 1.0;
+        }
+        if self.camera_input_state.right {
+            camera_move_direction.x += 1.0;
+        }
+        if self.camera_input_state.up {
+            camera_move_direction.y += 1.0;
+        }
+        if self.camera_input_state.down {
+            camera_move_direction.y -= 1.0;
+        }
+
+        if camera_move_direction.length_squared() > 0.1 {
+            camera_move_direction = camera_move_direction.normalize();
+
+            let (forward, right, up) = scene.camera.forward_right_up();
+
+            let mut amount = self.camera_speed * (dt as f32);
+            if self.camera_input_state.fast {
+                amount *= 3.0;
+            }
+
+            scene.camera.position += forward * camera_move_direction.z * amount;
+            scene.camera.position += right * camera_move_direction.x * amount;
+            scene.camera.position += up * camera_move_direction.y * amount;
+        }
+    }
 
     fn handle_key_input(
         &mut self,
         code: KeyCode,
         state: ElementState,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
     ) {
         match (code, state) {
-            (KeyCode::Escape, ElementState::Pressed) => event_loop.exit(),
+            (KeyCode::Escape, ElementState::Pressed) => self.grab_cursor(false).unwrap(),
+            (KeyCode::KeyW, ElementState::Pressed) => self.camera_input_state.forward = true,
+            (KeyCode::KeyW, ElementState::Released) => self.camera_input_state.forward = false,
+            (KeyCode::KeyS, ElementState::Pressed) => self.camera_input_state.backward = true,
+            (KeyCode::KeyS, ElementState::Released) => self.camera_input_state.backward = false,
+            (KeyCode::KeyA, ElementState::Pressed) => self.camera_input_state.left = true,
+            (KeyCode::KeyA, ElementState::Released) => self.camera_input_state.left = false,
+            (KeyCode::KeyD, ElementState::Pressed) => self.camera_input_state.right = true,
+            (KeyCode::KeyD, ElementState::Released) => self.camera_input_state.right = false,
+            (KeyCode::Space, ElementState::Pressed) => self.camera_input_state.up = true,
+            (KeyCode::Space, ElementState::Released) => self.camera_input_state.up = false,
+            (KeyCode::ShiftLeft, ElementState::Pressed) => self.camera_input_state.down = true,
+            (KeyCode::ShiftLeft, ElementState::Released) => self.camera_input_state.down = false,
+            (KeyCode::ControlLeft, ElementState::Pressed) => self.camera_input_state.fast = true,
+            (KeyCode::ControlLeft, ElementState::Released) => self.camera_input_state.fast = false,
             _ => {}
         }
+    }
+
+    fn handle_mouse_input(&mut self, button: MouseButton, state: ElementState) {
+        match (button, state) {
+            (MouseButton::Left, ElementState::Pressed) => self.grab_cursor(true).unwrap(),
+            _ => {}
+        }
+    }
+
+    fn handle_mouse_motion(&mut self, delta_x: f64, delta_y: f64) {
+        const PITCH_MAX: f32 = 89.0f32.to_radians();
+
+        if !self.cursor_grabbed {
+            return;
+        }
+
+        let scene = self.scene.as_mut().unwrap();
+        scene.camera.pitch_radians -= (delta_y as f32 * 0.002).clamp(-PITCH_MAX, PITCH_MAX);
+        scene.camera.yaw_radians += delta_x as f32 * 0.002;
+    }
+
+    fn grab_cursor(&mut self, grab: bool) -> anyhow::Result<()> {
+        let window = self.renderer.as_mut().unwrap().window.clone();
+
+        if grab {
+            window.set_cursor_grab(CursorGrabMode::Locked)?;
+            window.set_cursor_visible(false);
+            self.cursor_grabbed = true;
+        } else {
+            window.set_cursor_grab(CursorGrabMode::None)?;
+            window.set_cursor_visible(true);
+            self.cursor_grabbed = false;
+        }
+
+        Ok(())
     }
 }
 
@@ -63,28 +159,34 @@ impl ApplicationHandler for App {
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
         let renderer = pollster::block_on(Renderer::new(window)).unwrap();
         self.renderer = Some(renderer);
+
+        if self.scene.is_none() {
+            let renderer = self.renderer.as_mut().unwrap();
+            let mut scene = load_scene(&self.asset_manager, renderer).unwrap();
+            scene.camera.look_at(Vec3::ZERO);
+            self.scene = Some(scene);
+        }
+
+        self.last_time = Instant::now();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        let renderer = self.renderer.as_mut().unwrap();
-
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                renderer.resize(size.width, size.height);
+                self.renderer
+                    .as_mut()
+                    .unwrap()
+                    .resize(size.width, size.height);
             }
             WindowEvent::RedrawRequested => {
-                let scene = self
-                    .scene
-                    .get_or_insert_with(|| load_scene(&self.asset_manager, renderer).unwrap());
+                let current_time = Instant::now();
+                let dt = (current_time - self.last_time).as_secs_f64();
+                self.last_time = current_time;
+                self.update(dt);
 
-                let time = self.start_time.elapsed().as_secs_f32();
-                let radius = 5.0;
-                let x = time.sin() * radius;
-                let z = time.cos() * radius;
-                scene.camera.position = Vec3::new(x, 0.0, z);
-                scene.camera.look_at(Vec3::ZERO);
-
+                let renderer = self.renderer.as_mut().unwrap();
+                let scene = self.scene.as_ref().unwrap();
                 let draws = scene.render();
                 match renderer.render(&draws, &scene.camera) {
                     Ok(_) => {}
@@ -96,6 +198,7 @@ impl ApplicationHandler for App {
                     }
                 }
             }
+            WindowEvent::Focused(focused) => self.grab_cursor(focused).unwrap(),
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -105,9 +208,28 @@ impl ApplicationHandler for App {
                     },
                 ..
             } => self.handle_key_input(code, state, event_loop),
+            WindowEvent::MouseInput { state, button, .. } => self.handle_mouse_input(button, state),
             _ => {}
         }
     }
+
+    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        match event {
+            DeviceEvent::MouseMotion { delta } => self.handle_mouse_motion(delta.0, delta.1),
+            _ => {}
+        }
+    }
+}
+
+#[derive(Default)]
+struct InputState {
+    forward: bool,
+    backward: bool,
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+    fast: bool,
 }
 
 fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::Result<Scene> {

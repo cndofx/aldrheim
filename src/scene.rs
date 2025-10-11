@@ -19,10 +19,11 @@ impl Scene {
                 kind: SceneNodeKind::Empty,
             },
             camera: Camera {
-                position: Vec3::new(10.0, 0.0, 0.0),
-                direction: Vec3::new(-1.0, 0.0, 0.0),
-                fov_y_degrees: 75.0,
-                z_near: 1.0,
+                position: Vec3::new(0.0, 0.0, -5.0),
+                pitch_radians: 0.0,
+                yaw_radians: 90.0f32.to_radians(),
+                fov_y_radians: 75.0f32.to_radians(),
+                z_near: 0.1,
                 z_far: 10000.0,
             },
         }
@@ -83,21 +84,33 @@ pub struct MeshNode {
 #[derive(Debug)]
 pub struct Camera {
     pub position: Vec3,
-    pub direction: Vec3,
-    pub fov_y_degrees: f32,
+    pub pitch_radians: f32,
+    pub yaw_radians: f32,
+    pub fov_y_radians: f32,
     pub z_near: f32,
     pub z_far: f32,
 }
 
 impl Camera {
-    const UP: Vec3 = Vec3::Y;
+    pub const UP: Vec3 = Vec3::Y;
 
-    /// rotate this camera to look at the target position
     pub fn look_at(&mut self, target: Vec3) {
-        self.direction = (target - self.position).normalize();
+        let forward = (target - self.position).normalize();
+        self.yaw_radians = forward.x.atan2(forward.z);
+        self.pitch_radians = forward.y.asin();
+    }
+
+    pub fn forward_right_up(&self) -> (Vec3, Vec3, Vec3) {
+        let up = Self::UP;
+        let forward_x = self.yaw_radians.sin() * self.pitch_radians.cos();
+        let forward_y = self.pitch_radians.sin();
+        let forward_z = self.yaw_radians.cos() * self.pitch_radians.cos();
+        let forward = Vec3::new(forward_x, forward_y, forward_z).normalize();
+        let right = up.cross(forward);
+        (forward, right, up)
     }
 
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_to_lh(self.position, self.direction, Self::UP)
+        Mat4::look_to_lh(self.position, self.forward_right_up().0, Self::UP)
     }
 }

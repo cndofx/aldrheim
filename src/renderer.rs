@@ -23,7 +23,7 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     depth_texture: wgpu::Texture,
-    window: Arc<Window>,
+    pub window: Arc<Window>,
 
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
     linear_sampler: wgpu::Sampler,
@@ -136,7 +136,7 @@ impl Renderer {
 
         let window_size = self.window.inner_size();
         let projection = Mat4::perspective_lh(
-            camera.fov_y_degrees.to_radians(),
+            camera.fov_y_radians,
             (window_size.width as f32) / (window_size.height as f32),
             camera.z_near,
             camera.z_far,

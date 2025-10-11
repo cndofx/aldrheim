@@ -451,7 +451,7 @@ pub struct ForceField {
     pub map_distortion: f32,
     pub vertex_color_enabled: bool,
     pub displacement_map: String,
-    pub ttl: f32,
+    pub ttl: f32, // time to live?
     pub vertex_buffer: VertexBuffer,
     pub index_buffer: IndexBuffer,
     pub vertex_declaration: VertexDeclaration,

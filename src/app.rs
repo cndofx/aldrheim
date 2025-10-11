@@ -1,6 +1,7 @@
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{f32::consts::TAU, path::PathBuf, sync::Arc, time::Instant};
 
 use glam::{Mat4, Quat, Vec3};
+use rand::Rng;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent},
@@ -135,15 +136,18 @@ impl App {
     fn grab_cursor(&mut self, grab: bool) -> anyhow::Result<()> {
         let window = self.renderer.as_mut().unwrap().window.clone();
 
-        if grab {
-            window.set_cursor_grab(CursorGrabMode::Locked)?;
-            window.set_cursor_visible(false);
-            self.cursor_grabbed = true;
+        let mode = if grab {
+            CursorGrabMode::Locked
         } else {
-            window.set_cursor_grab(CursorGrabMode::None)?;
-            window.set_cursor_visible(true);
-            self.cursor_grabbed = false;
+            CursorGrabMode::None
+        };
+
+        match window.set_cursor_grab(mode) {
+            Ok(_) => {}
+            Err(e) => log::error!("failed to grab cursor: {e}"),
         }
+        window.set_cursor_visible(!grab);
+        self.cursor_grabbed = grab;
 
         Ok(())
     }
@@ -243,6 +247,11 @@ fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::
         asset_manager,
     )?;
 
+    let book_mesh = renderer.load_model_from_path(
+        "Content/Models/Items_Wizard/magickbook_major.xnb",
+        asset_manager,
+    )?;
+
     let mut scene = Scene::new();
     scene.root_node.children.push(SceneNode {
         name: "Plus Staff".into(),
@@ -280,6 +289,30 @@ fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::
             mesh: basic_staff_mesh.clone(),
         }),
     });
+
+    let mut rng = rand::rng();
+    for _ in 0..15000 {
+        let tx: f32 = rng.random_range(-10.0..10.0);
+        let ty: f32 = rng.random_range(-10.0..10.0);
+        let tz: f32 = rng.random_range(-10.0..10.0);
+
+        let rx: f32 = rng.random_range(0.0..TAU);
+        let ry: f32 = rng.random_range(0.0..TAU);
+        let rz: f32 = rng.random_range(0.0..TAU);
+
+        scene.root_node.children.push(SceneNode {
+            name: "Book".into(),
+            transform: Mat4::from_scale_rotation_translation(
+                Vec3::ONE,
+                Quat::from_euler(glam::EulerRot::XYZ, rx, ry, rz),
+                Vec3::new(tx, ty, tz),
+            ),
+            children: Vec::new(),
+            kind: SceneNodeKind::Mesh(MeshNode {
+                mesh: book_mesh.clone(),
+            }),
+        });
+    }
 
     Ok(scene)
 }

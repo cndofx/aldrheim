@@ -144,6 +144,7 @@ pub struct AnimatedLevelPart {
     pub effect_storages: Vec<EffectStorage>,
     pub light_refs: Vec<LevelModelLightRef>,
     pub collision: Option<AnimatedLevelPartCollision>,
+    pub nav_mesh: Option<NavMesh>,
     pub children: Vec<AnimatedLevelPart>,
 }
 
@@ -205,9 +206,11 @@ impl AnimatedLevelPart {
             None
         };
 
-        if reader.read_bool()? {
-            todo!("animated part nav mesh");
-        }
+        let nav_mesh = if reader.read_bool()? {
+            Some(NavMesh::read(reader)?)
+        } else {
+            None
+        };
 
         let num_children = reader.read_i32::<LittleEndian>()?;
         let mut children = Vec::with_capacity(num_children as usize);
@@ -228,6 +231,7 @@ impl AnimatedLevelPart {
             effect_storages,
             light_refs,
             collision,
+            nav_mesh,
             children,
         })
     }

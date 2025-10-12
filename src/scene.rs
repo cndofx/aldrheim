@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use glam::{Mat4, Vec3};
 
-use crate::{asset_manager::ModelAsset, renderer::ModelDrawCommand};
+use crate::{
+    asset_manager::{BiTreeAsset, ModelAsset},
+    renderer::{ModelDrawCommand, Renderable},
+};
 
 pub struct Scene {
     pub root_node: SceneNode,
@@ -58,8 +61,14 @@ impl SceneNode {
         transform_stack.push(current_transform);
 
         match &self.kind {
-            SceneNodeKind::Mesh(mesh) => draw_commands.push(ModelDrawCommand {
-                model: mesh.model.clone(),
+            SceneNodeKind::Model(model_node) => draw_commands.push(ModelDrawCommand {
+                renderable: Renderable::Model(model_node.clone()),
+                transform: current_transform,
+            }),
+            // TODO: it seems like bitree parent nodes draw all of the same mesh as their child nodes combined?
+            // should i render just the parent nodes or just the leaf child nodes?
+            SceneNodeKind::BiTree(bitree_node) => draw_commands.push(ModelDrawCommand {
+                renderable: Renderable::BiTreeNode(bitree_node.clone()),
                 transform: current_transform,
             }),
             _ => {}
@@ -75,11 +84,20 @@ impl SceneNode {
 
 pub enum SceneNodeKind {
     Empty,
-    Mesh(ModelNode),
+    Model(ModelNode),
+    BiTree(BiTreeNode),
 }
 
+#[derive(Clone)]
 pub struct ModelNode {
     pub model: Rc<ModelAsset>,
+}
+
+#[derive(Clone)]
+pub struct BiTreeNode {
+    pub tree: Rc<BiTreeAsset>,
+    pub start_index: u32,
+    pub index_count: u32,
 }
 
 #[derive(Debug)]

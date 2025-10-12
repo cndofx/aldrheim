@@ -6,10 +6,12 @@ use std::{
 };
 
 use anyhow::Context;
+use glam::Mat4;
 
 use crate::{
     renderer::Renderer,
-    xnb::{Xnb, XnbContent, asset::XnbAsset},
+    scene::{self, SceneNode, SceneNodeKind},
+    xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
 
 pub struct AssetManager {
@@ -97,8 +99,36 @@ impl AssetManager {
         Ok(model)
     }
 
-    fn load_xnb_content(&self, path: impl AsRef<Path>) -> anyhow::Result<XnbContent> {
-        let path = path.as_ref();
+    pub fn load_level_model(
+        &mut self,
+        path: &Path,
+        base: Option<&Path>,
+        renderer: &Renderer,
+    ) -> anyhow::Result<SceneNode> {
+        let path = self.resolve_xnb_path(path.as_ref(), base.as_ref().map(|v| v.as_ref()))?;
+
+        let model_content = self.load_xnb_content(&path)?;
+        let XnbAsset::LevelModel(level_model) = &model_content.primary_asset else {
+            anyhow::bail!("expected LevelModel at path {}", path.display());
+        };
+
+        let mut scene_node = SceneNode {
+            name: "Level Model".into(),
+            transform: Mat4::IDENTITY,
+            children: Vec::new(),
+            kind: SceneNodeKind::Empty,
+        };
+
+        for tree in &level_model.model.trees {
+            debug_assert_eq!(tree.vertex_stride as usize, tree.vertex_decl.stride());
+            let asset = renderer.load_bitree(tree)?;
+            load_level_model_bitree_node_recursive(&mut scene_node, &tree.node, Rc::new(asset))?;
+        }
+
+        Ok(scene_node)
+    }
+
+    fn load_xnb_content(&self, path: &Path) -> anyhow::Result<XnbContent> {
         let file = std::fs::File::open(path)
             .with_context(|| format!("failed to open file {}", path.display()))?;
         let mut reader = BufReader::new(file);
@@ -201,4 +231,38 @@ pub struct ModelAsset {
     pub start_index: u32,
     pub base_vertex: u32,
     pub texture: Rc<Texture2DAsset>,
+}
+
+pub struct BiTreeAsset {
+    pub vertex_buffer: wgpu::Buffer,
+    pub vertex_buffer_bind_group: wgpu::BindGroup,
+    pub vertex_layout_uniform_buffer: wgpu::Buffer,
+    pub vertex_layout_uniform_bind_group: wgpu::BindGroup,
+    pub index_buffer: wgpu::Buffer,
+    pub index_format: wgpu::IndexFormat,
+}
+
+fn load_level_model_bitree_node_recursive(
+    parent: &mut SceneNode,
+    bitree_node: &BiTreeNode,
+    bitree_asset: Rc<BiTreeAsset>,
+) -> anyhow::Result<()> {
+    let mut node = SceneNode {
+        name: "BiTree Node".into(),
+        transform: Mat4::IDENTITY,
+        children: Vec::new(),
+        kind: SceneNodeKind::BiTree(scene::BiTreeNode {
+            tree: bitree_asset.clone(),
+            start_index: bitree_node.start_index as u32,
+            index_count: bitree_node.primitive_count as u32 * 3,
+        }),
+    };
+
+    for child in bitree_node.iter_children() {
+        load_level_model_bitree_node_recursive(&mut node, child, bitree_asset.clone())?;
+    }
+
+    parent.children.push(node);
+
+    Ok(())
 }

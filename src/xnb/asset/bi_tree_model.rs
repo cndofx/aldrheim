@@ -26,6 +26,11 @@ impl BiTreeModel {
             let tree = BiTree::read(reader, type_readers)?;
             trees.push(tree);
         }
+
+        // for (i, tree) in trees.iter().enumerate() {
+        //     check_bitree_index_buffers(i, 0, tree.index_buffer.index_count(), &tree.node);
+        // }
+
         Ok(BiTreeModel { trees })
     }
 }
@@ -165,5 +170,23 @@ impl<'a> Iterator for BiTreeNodeChildrenIter<'a> {
         }
 
         None
+    }
+}
+
+fn check_bitree_index_buffers(
+    tree_index: usize,
+    depth: usize,
+    index_count: usize,
+    root: &BiTreeNode,
+) {
+    let max_index = (root.start_index + root.primitive_count * 3) as usize;
+    if max_index > index_count {
+        log::warn!(
+            "bitree {tree_index} node depth ({depth}) max index ({max_index}) is greater than index buffer max index ({index_count})"
+        );
+    }
+
+    for child in root.iter_children() {
+        check_bitree_index_buffers(tree_index, depth + 1, index_count, child);
     }
 }

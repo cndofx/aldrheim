@@ -242,85 +242,94 @@ struct InputState {
 }
 
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
-    let basic_staff_model = asset_manager.load_model(
-        Path::new("Content/Models/Items_Wizard/staff_basic_0.xnb"),
-        None,
-        renderer,
-    )?;
-
-    let plus_staff_model = asset_manager.load_model(
-        Path::new("Content/Models/Items_Wizard/staff_plus_0.xnb"),
-        None,
-        renderer,
-    )?;
-
-    let book_model = asset_manager.load_model(
-        Path::new("Content/Models/Items_Wizard/magickbook_major.xnb"),
+    let havindr_arena = asset_manager.load_level_model(
+        Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
         None,
         renderer,
     )?;
 
     let mut scene = Scene::new();
-    scene.root_node.children.push(SceneNode {
-        name: "Plus Staff".into(),
-        transform: Mat4::from_scale_rotation_translation(
-            Vec3::ONE,
-            Quat::IDENTITY,
-            Vec3::new(0.0, 0.0, 0.0),
-        ),
-        children: Vec::new(),
-        kind: SceneNodeKind::Mesh(ModelNode {
-            model: plus_staff_model,
-        }),
-    });
-    scene.root_node.children.push(SceneNode {
-        name: "Basic Staff 1".into(),
-        transform: Mat4::from_scale_rotation_translation(
-            Vec3::ONE,
-            Quat::IDENTITY,
-            Vec3::new(2.0, 0.0, 0.0),
-        ),
-        children: Vec::new(),
-        kind: SceneNodeKind::Mesh(ModelNode {
-            model: basic_staff_model.clone(),
-        }),
-    });
-    scene.root_node.children.push(SceneNode {
-        name: "Basic Staff 2".into(),
-        transform: Mat4::from_scale_rotation_translation(
-            Vec3::ONE,
-            Quat::IDENTITY,
-            Vec3::new(-2.0, 0.0, 0.0),
-        ),
-        children: Vec::new(),
-        kind: SceneNodeKind::Mesh(ModelNode {
-            model: basic_staff_model.clone(),
-        }),
-    });
+    scene.root_node.children.push(havindr_arena);
 
-    let mut rng = rand::rng();
-    for _ in 0..15000 {
-        let tx: f32 = rng.random_range(-10.0..10.0);
-        let ty: f32 = rng.random_range(-10.0..10.0);
-        let tz: f32 = rng.random_range(-10.0..10.0);
+    // let basic_staff_model = asset_manager.load_model(
+    //     Path::new("Content/Models/Items_Wizard/staff_basic_0.xnb"),
+    //     None,
+    //     renderer,
+    // )?;
 
-        let rx: f32 = rng.random_range(0.0..TAU);
-        let ry: f32 = rng.random_range(0.0..TAU);
-        let rz: f32 = rng.random_range(0.0..TAU);
+    // let plus_staff_model = asset_manager.load_model(
+    //     Path::new("Content/Models/Items_Wizard/staff_plus_0.xnb"),
+    //     None,
+    //     renderer,
+    // )?;
 
-        scene.root_node.children.push(SceneNode {
-            name: "Book".into(),
-            transform: Mat4::from_scale_rotation_translation(
-                Vec3::ONE,
-                Quat::from_euler(glam::EulerRot::XYZ, rx, ry, rz),
-                Vec3::new(tx, ty, tz),
-            ),
-            children: Vec::new(),
-            kind: SceneNodeKind::Mesh(ModelNode {
-                model: book_model.clone(),
-            }),
-        });
-    }
+    // let book_model = asset_manager.load_model(
+    //     Path::new("Content/Models/Items_Wizard/magickbook_major.xnb"),
+    //     None,
+    //     renderer,
+    // )?;
+
+    // let mut scene = Scene::new();
+    // scene.root_node.children.push(SceneNode {
+    //     name: "Plus Staff".into(),
+    //     transform: Mat4::from_scale_rotation_translation(
+    //         Vec3::ONE,
+    //         Quat::IDENTITY,
+    //         Vec3::new(0.0, 0.0, 0.0),
+    //     ),
+    //     children: Vec::new(),
+    //     kind: SceneNodeKind::Mesh(ModelNode {
+    //         model: plus_staff_model,
+    //     }),
+    // });
+    // scene.root_node.children.push(SceneNode {
+    //     name: "Basic Staff 1".into(),
+    //     transform: Mat4::from_scale_rotation_translation(
+    //         Vec3::ONE,
+    //         Quat::IDENTITY,
+    //         Vec3::new(2.0, 0.0, 0.0),
+    //     ),
+    //     children: Vec::new(),
+    //     kind: SceneNodeKind::Mesh(ModelNode {
+    //         model: basic_staff_model.clone(),
+    //     }),
+    // });
+    // scene.root_node.children.push(SceneNode {
+    //     name: "Basic Staff 2".into(),
+    //     transform: Mat4::from_scale_rotation_translation(
+    //         Vec3::ONE,
+    //         Quat::IDENTITY,
+    //         Vec3::new(-2.0, 0.0, 0.0),
+    //     ),
+    //     children: Vec::new(),
+    //     kind: SceneNodeKind::Mesh(ModelNode {
+    //         model: basic_staff_model.clone(),
+    //     }),
+    // });
+
+    // let mut rng = rand::rng();
+    // for _ in 0..15000 {
+    //     let tx: f32 = rng.random_range(-10.0..10.0);
+    //     let ty: f32 = rng.random_range(-10.0..10.0);
+    //     let tz: f32 = rng.random_range(-10.0..10.0);
+
+    //     let rx: f32 = rng.random_range(0.0..TAU);
+    //     let ry: f32 = rng.random_range(0.0..TAU);
+    //     let rz: f32 = rng.random_range(0.0..TAU);
+
+    //     scene.root_node.children.push(SceneNode {
+    //         name: "Book".into(),
+    //         transform: Mat4::from_scale_rotation_translation(
+    //             Vec3::ONE,
+    //             Quat::from_euler(glam::EulerRot::XYZ, rx, ry, rz),
+    //             Vec3::new(tx, ty, tz),
+    //         ),
+    //         children: Vec::new(),
+    //         kind: SceneNodeKind::Mesh(ModelNode {
+    //             model: book_model.clone(),
+    //         }),
+    //     });
+    // }
 
     Ok(scene)
 }

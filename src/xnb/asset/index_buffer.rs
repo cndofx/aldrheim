@@ -18,4 +18,17 @@ impl IndexBuffer {
         reader.read_exact(&mut data)?;
         Ok(IndexBuffer { is_16_bit, data })
     }
+
+    pub fn index_count(&self) -> usize {
+        let index_size = if self.is_16_bit { 2 } else { 4 };
+        self.data.len() / index_size
+    }
+
+    pub fn wgpu_format(&self) -> wgpu::IndexFormat {
+        if self.is_16_bit {
+            wgpu::IndexFormat::Uint16
+        } else {
+            wgpu::IndexFormat::Uint32
+        }
+    }
 }

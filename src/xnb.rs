@@ -9,6 +9,7 @@ use crate::{read_ext::MyReadBytesExt, xnb::asset::XnbAsset};
 
 pub mod asset;
 
+pub use asset::bi_tree_model::{BiTree, BiTreeNode};
 pub use asset::model::Model;
 pub use asset::texture_2d::Texture2D;
 

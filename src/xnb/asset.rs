@@ -5,13 +5,15 @@ use crate::{
     xnb::{
         TypeReader,
         asset::{
-            bi_tree_model::BiTreeModel, index_buffer::IndexBuffer, level_model::LevelModel,
-            model::Model, render_deferred_effect::RenderDeferredEffect, texture_2d::Texture2D,
-            texture_3d::Texture3D, vertex_buffer::VertexBuffer, vertex_decl::VertexDeclaration,
+            additive_effect::AdditiveEffect, bi_tree_model::BiTreeModel, index_buffer::IndexBuffer,
+            level_model::LevelModel, model::Model, render_deferred_effect::RenderDeferredEffect,
+            texture_2d::Texture2D, texture_3d::Texture3D, vertex_buffer::VertexBuffer,
+            vertex_decl::VertexDeclaration,
         },
     },
 };
 
+pub mod additive_effect;
 pub mod animation;
 pub mod bi_tree_model;
 pub mod color;
@@ -34,6 +36,7 @@ const VERTEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.VertexB
 const INDEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.IndexBufferReader";
 
 const BI_TREE_MODEL_READER_NAME: &str = "PolygonHead.Pipeline.BiTreeModelReader";
+const ADDITIVE_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.AdditiveEffectReader";
 const RENDER_DEFERRED_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.RenderDeferredEffectReader";
 
 const LEVEL_MODEL_READER_NAME: &str = "Magicka.ContentReaders.LevelModelReader";
@@ -49,6 +52,7 @@ pub enum XnbAsset {
     VertexBuffer(VertexBuffer),
     IndexBuffer(IndexBuffer),
     BiTreeModel(BiTreeModel),
+    AdditiveEffect(AdditiveEffect),
     RenderDeferredEffect(RenderDeferredEffect),
     LevelModel(LevelModel),
 }
@@ -94,6 +98,10 @@ impl XnbAsset {
             BI_TREE_MODEL_READER_NAME => {
                 let model = BiTreeModel::read(reader, type_readers)?;
                 Ok(XnbAsset::BiTreeModel(model))
+            }
+            ADDITIVE_EFFECT_READER_NAME => {
+                let effect = AdditiveEffect::read(reader)?;
+                Ok(XnbAsset::AdditiveEffect(effect))
             }
             RENDER_DEFERRED_EFFECT_READER_NAME => {
                 let effect = RenderDeferredEffect::read(reader)?;

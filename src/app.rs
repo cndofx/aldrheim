@@ -241,9 +241,26 @@ struct InputState {
     fast: bool,
 }
 
+// TODO: NOT YET LOADING LEVELS:
+// - probably most of the ch_dungeons_*
+// - ch_grimlab_build.xnb (needs animated part nav mesh)
+// - ch_mines.xnb (needs animated part nav mesh)
+// - ch_necro.xnb (needs liquids)
+// - ch_osotc_s2.xnb (needs animated part nav mesh)
+// - ch_osotc_s3.xnb (needs liquids)
+// - ch_outsmouth.xnb (needs liquids)
+// - ch_swamp.xnb (needs liquids)
+// - ch_vietnam_s1.xnb (needs liquids)
+// - ch_vietnam_s2.xnb (needs animated part nav mesh)
+// - ch_vietnam_s3.xnb (needs animated part nav mesh)
+// - ch_volano_hideout.xnb (needs liquids)
+// - ch_woot_bout_of_madness.xnb (needs animated part nav mesh)
+// - ch_woot_eye_sockey_rink.xnb (needs animated part nav mesh)
+
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
     let havindr_arena = asset_manager.load_level_model(
         Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
+        // Path::new("Content/Levels/Challenges/ch_dungeons_ch1_s2.xnb"),
         None,
         renderer,
     )?;

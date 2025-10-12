@@ -17,6 +17,7 @@ impl Scene {
         Scene {
             root_node: SceneNode {
                 name: "Root Node".into(),
+                visible: true,
                 transform: Mat4::IDENTITY,
                 children: Vec::new(),
                 kind: SceneNodeKind::Empty,
@@ -33,6 +34,10 @@ impl Scene {
     }
 
     pub fn render(&self) -> Vec<ModelDrawCommand> {
+        if !self.root_node.visible {
+            return Vec::new();
+        }
+
         let mut draw_commands = Vec::new();
         let mut transform_stack = Vec::new();
         transform_stack.push(Mat4::IDENTITY);
@@ -45,6 +50,7 @@ impl Scene {
 
 pub struct SceneNode {
     pub name: String,
+    pub visible: bool,
     pub transform: Mat4,
     pub children: Vec<SceneNode>,
     pub kind: SceneNodeKind,
@@ -56,6 +62,10 @@ impl SceneNode {
         draw_commands: &mut Vec<ModelDrawCommand>,
         transform_stack: &mut Vec<Mat4>,
     ) {
+        if !self.visible {
+            return;
+        }
+
         let parent_transform = *transform_stack.last().unwrap();
         let current_transform = parent_transform * self.transform;
         transform_stack.push(current_transform);

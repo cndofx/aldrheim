@@ -114,6 +114,7 @@ impl AssetManager {
 
         let mut scene_node = SceneNode {
             name: "Level Model".into(),
+            visible: true,
             transform: Mat4::IDENTITY,
             children: Vec::new(),
             kind: SceneNodeKind::Empty,
@@ -125,8 +126,8 @@ impl AssetManager {
             let XnbAsset::RenderDeferredEffect(effect) = &tree.effect else {
                 anyhow::bail!("expected RenderDeferredEffect inside LevelModel BiTree");
             };
-            dbg!(&tree.vertex_decl, effect);
-            println!("\n\n\n");
+            // dbg!(&tree.vertex_decl, effect);
+            // println!("\n\n\n");
 
             let diffuse_texture_0 = if effect.material_0.diffuse_texture.len() > 0 {
                 Some(self.load_texture_2d(
@@ -266,6 +267,7 @@ pub struct ModelAsset {
 }
 
 pub struct BiTreeAsset {
+    pub visible: bool,
     pub vertex_buffer: wgpu::Buffer,
     pub vertex_buffer_bind_group: wgpu::BindGroup,
     pub vertex_layout_uniform_buffer: wgpu::Buffer,
@@ -284,6 +286,7 @@ fn load_level_model_bitree_node_recursive(
 ) -> anyhow::Result<()> {
     let mut node = SceneNode {
         name: "BiTree Node".into(),
+        visible: bitree_asset.visible,
         transform: Mat4::IDENTITY,
         children: Vec::new(),
         kind: SceneNodeKind::BiTree(scene::BiTreeNode {

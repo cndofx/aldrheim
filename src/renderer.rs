@@ -391,6 +391,7 @@ impl Renderer {
         });
 
         Ok(BiTreeAsset {
+            visible: tree.visible,
             vertex_buffer,
             vertex_buffer_bind_group,
             vertex_layout_uniform_buffer,

@@ -7,8 +7,8 @@ use crate::{
         asset::{
             additive_effect::AdditiveEffect, bi_tree_model::BiTreeModel, index_buffer::IndexBuffer,
             level_model::LevelModel, model::Model, render_deferred_effect::RenderDeferredEffect,
-            texture_2d::Texture2D, texture_3d::Texture3D, vertex_buffer::VertexBuffer,
-            vertex_decl::VertexDeclaration,
+            render_deferred_liquid_effect::RenderDeferredLiquidEffect, texture_2d::Texture2D,
+            texture_3d::Texture3D, vertex_buffer::VertexBuffer, vertex_decl::VertexDeclaration,
         },
     },
 };
@@ -21,6 +21,7 @@ pub mod index_buffer;
 pub mod level_model;
 pub mod model;
 pub mod render_deferred_effect;
+pub mod render_deferred_liquid_effect;
 pub mod texture_2d;
 pub mod texture_3d;
 pub mod vertex_buffer;
@@ -38,6 +39,8 @@ const INDEX_BUFFER_READER_NAME: &str = "Microsoft.Xna.Framework.Content.IndexBuf
 const BI_TREE_MODEL_READER_NAME: &str = "PolygonHead.Pipeline.BiTreeModelReader";
 const ADDITIVE_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.AdditiveEffectReader";
 const RENDER_DEFERRED_EFFECT_READER_NAME: &str = "PolygonHead.Pipeline.RenderDeferredEffectReader";
+const RENDER_DEFERRED_LIQUID_EFFECT_READER_NAME: &str =
+    "PolygonHead.Pipeline.RenderDeferredLiquidEffectReader";
 
 const LEVEL_MODEL_READER_NAME: &str = "Magicka.ContentReaders.LevelModelReader";
 
@@ -54,6 +57,7 @@ pub enum XnbAsset {
     BiTreeModel(BiTreeModel),
     AdditiveEffect(AdditiveEffect),
     RenderDeferredEffect(RenderDeferredEffect),
+    RenderDeferredLiquidEffect(RenderDeferredLiquidEffect),
     LevelModel(LevelModel),
 }
 
@@ -106,6 +110,10 @@ impl XnbAsset {
             RENDER_DEFERRED_EFFECT_READER_NAME => {
                 let effect = RenderDeferredEffect::read(reader)?;
                 Ok(XnbAsset::RenderDeferredEffect(effect))
+            }
+            RENDER_DEFERRED_LIQUID_EFFECT_READER_NAME => {
+                let effect = RenderDeferredLiquidEffect::read(reader)?;
+                Ok(XnbAsset::RenderDeferredLiquidEffect(effect))
             }
             LEVEL_MODEL_READER_NAME => {
                 let model = LevelModel::read(reader, type_readers)?;

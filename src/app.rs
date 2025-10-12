@@ -242,24 +242,19 @@ struct InputState {
     fast: bool,
 }
 
+// TODO: most of the pink stuff around the levels is probably meant to be using vertex colors?
+
 // TODO: NOT YET LOADING LEVELS:
-// - probably most of the ch_dungeons_*
-// - ch_mines.xnb (needs liquids)
-// - ch_necro.xnb (needs liquids)
-// - ch_osotc_s2.xnb (needs liquids)
-// - ch_osotc_s3.xnb (needs liquids)
-// - ch_outsmouth.xnb (needs liquids)
-// - ch_swamp.xnb (needs liquids)
-// - ch_vietnam_s1.xnb (needs liquids)
-// - ch_vietnam_s2.xnb (needs liquids)
-// - ch_vietnam_s3.xnb (ch_vietnam_s3)
-// - ch_volano_hideout.xnb (needs liquids)
-// - ch_woot_eye_sockey_rink.xnb (needs liquids)
+// - ch_dungeons_ch2_s1.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
+// - ch_dungeons_ch2_s2.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
+// - probably rest of dungeons ch2
+// - ch_osotc_s3.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
+// - ch_volcano_hideout.xnb (needs LavaEffect)
 
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
     let havindr_arena = asset_manager.load_level_model(
-        Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
-        // Path::new("Content/Levels/Challenges/ch_woot_eye_sockey_rink.xnb"),
+        // Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
+        Path::new("Content/Levels/Challenges/ch_dungeons_ch2_s3.xnb"),
         None,
         renderer,
     )?;

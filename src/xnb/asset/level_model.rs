@@ -9,7 +9,8 @@ use crate::{
         TypeReader,
         asset::{
             LIST_READER_NAME, XnbAsset, animation::AnimationChannel, bi_tree_model::BiTreeModel,
-            color::Color, index_buffer::IndexBuffer, model::Model, vertex_buffer::VertexBuffer,
+            color::Color, index_buffer::IndexBuffer, model::Model,
+            render_deferred_liquid_effect::RenderDeferredLiquidEffect, vertex_buffer::VertexBuffer,
             vertex_decl::VertexDeclaration,
         },
     },
@@ -69,7 +70,7 @@ impl LevelModel {
         let num_liquids = reader.read_i32::<LittleEndian>()?;
         let mut liquids = Vec::with_capacity(num_liquids as usize);
         for _ in 0..num_liquids {
-            let liquid = Liquid::read(reader)?;
+            let liquid = Liquid::read(reader, type_readers)?;
             liquids.push(liquid);
         }
 
@@ -170,7 +171,7 @@ impl AnimatedLevelPart {
         let num_liquids = reader.read_i32::<LittleEndian>()?;
         let mut liquids = Vec::with_capacity(num_liquids as usize);
         for _ in 0..num_liquids {
-            let liquid = Liquid::read(reader)?;
+            let liquid = Liquid::read(reader, type_readers)?;
             liquids.push(liquid);
         }
 
@@ -431,15 +432,75 @@ pub enum Liquid {
 }
 
 impl Liquid {
-    pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
-        let idx = reader.read_7bit_encoded_i32()?;
-        dbg!(idx);
-        todo!();
+    pub fn read(reader: &mut impl Read, type_readers: &[TypeReader]) -> anyhow::Result<Self> {
+        let effect = XnbAsset::read(reader, type_readers)?;
+
+        match effect {
+            XnbAsset::RenderDeferredLiquidEffect(effect) => {
+                let water = Water::read(reader, type_readers, effect)?;
+                Ok(Liquid::Water(water))
+            }
+            _ => anyhow::bail!("expected DeferredLiquidEffect in LeveLModel"),
+        }
     }
 }
 
 #[derive(Debug)]
-pub struct Water {}
+pub struct Water {
+    pub effect: RenderDeferredLiquidEffect,
+    pub vertex_buffer: VertexBuffer,
+    pub index_buffer: IndexBuffer,
+    pub vertex_declaration: VertexDeclaration,
+    pub vertex_stride: i32,
+    pub num_vertices: i32,
+    pub primitive_count: i32,
+    pub entities_can_drown: bool,
+    pub freezable: bool,
+    pub auto_freeze: bool,
+}
+
+impl Water {
+    pub fn read(
+        reader: &mut impl Read,
+        type_readers: &[TypeReader],
+        effect: RenderDeferredLiquidEffect,
+    ) -> anyhow::Result<Self> {
+        let vertex_buffer = XnbAsset::read(reader, type_readers)?;
+        let XnbAsset::VertexBuffer(vertex_buffer) = vertex_buffer else {
+            anyhow::bail!("expected vertex buffer");
+        };
+
+        let index_buffer = XnbAsset::read(reader, type_readers)?;
+        let XnbAsset::IndexBuffer(index_buffer) = index_buffer else {
+            anyhow::bail!("expected index buffer");
+        };
+
+        let vertex_declaration = XnbAsset::read(reader, type_readers)?;
+        let XnbAsset::VertexDeclaration(vertex_declaration) = vertex_declaration else {
+            anyhow::bail!("expected vertex declaration");
+        };
+
+        let vertex_stride = reader.read_i32::<LittleEndian>()?;
+        let num_vertices = reader.read_i32::<LittleEndian>()?;
+        let primitive_count = reader.read_i32::<LittleEndian>()?;
+        let entities_can_drown = reader.read_bool()?;
+        let freezable = reader.read_bool()?;
+        let auto_freeze = reader.read_bool()?;
+
+        Ok(Water {
+            effect,
+            vertex_buffer,
+            index_buffer,
+            vertex_declaration,
+            vertex_stride,
+            num_vertices,
+            primitive_count,
+            entities_can_drown,
+            freezable,
+            auto_freeze,
+        })
+    }
+}
 
 #[derive(Debug)]
 pub struct Lava {}

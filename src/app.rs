@@ -1,4 +1,9 @@
-use std::{f32::consts::TAU, path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    f32::consts::TAU,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 
 use glam::{Mat4, Quat, Vec3};
 use rand::Rng;
@@ -16,7 +21,7 @@ use winit::platform::wayland::WindowAttributesExtWayland;
 use crate::{
     asset_manager::AssetManager,
     renderer::Renderer,
-    scene::{MeshNode, Scene, SceneNode, SceneNodeKind},
+    scene::{ModelNode, Scene, SceneNode, SceneNodeKind},
 };
 
 pub struct App {
@@ -165,8 +170,8 @@ impl ApplicationHandler for App {
         self.renderer = Some(renderer);
 
         if self.scene.is_none() {
-            let renderer = self.renderer.as_mut().unwrap();
-            let mut scene = load_scene(&self.asset_manager, renderer).unwrap();
+            let renderer = self.renderer.as_ref().unwrap();
+            let mut scene = load_scene(&mut self.asset_manager, renderer).unwrap();
             scene.camera.look_at(Vec3::ZERO);
             self.scene = Some(scene);
         }
@@ -236,20 +241,23 @@ struct InputState {
     fast: bool,
 }
 
-fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::Result<Scene> {
-    let basic_staff_mesh = renderer.load_model_from_path(
-        "Content/Models/Items_Wizard/staff_basic_0.xnb",
-        asset_manager,
+fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
+    let basic_staff_model = asset_manager.load_model(
+        Path::new("Content/Models/Items_Wizard/staff_basic_0.xnb"),
+        None,
+        renderer,
     )?;
 
-    let plus_staff_mesh = renderer.load_model_from_path(
-        "Content/Models/Items_Wizard/staff_plus_0.xnb",
-        asset_manager,
+    let plus_staff_model = asset_manager.load_model(
+        Path::new("Content/Models/Items_Wizard/staff_plus_0.xnb"),
+        None,
+        renderer,
     )?;
 
-    let book_mesh = renderer.load_model_from_path(
-        "Content/Models/Items_Wizard/magickbook_major.xnb",
-        asset_manager,
+    let book_model = asset_manager.load_model(
+        Path::new("Content/Models/Items_Wizard/magickbook_major.xnb"),
+        None,
+        renderer,
     )?;
 
     let mut scene = Scene::new();
@@ -261,8 +269,8 @@ fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::
             Vec3::new(0.0, 0.0, 0.0),
         ),
         children: Vec::new(),
-        kind: SceneNodeKind::Mesh(MeshNode {
-            mesh: plus_staff_mesh,
+        kind: SceneNodeKind::Mesh(ModelNode {
+            model: plus_staff_model,
         }),
     });
     scene.root_node.children.push(SceneNode {
@@ -273,8 +281,8 @@ fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::
             Vec3::new(2.0, 0.0, 0.0),
         ),
         children: Vec::new(),
-        kind: SceneNodeKind::Mesh(MeshNode {
-            mesh: basic_staff_mesh.clone(),
+        kind: SceneNodeKind::Mesh(ModelNode {
+            model: basic_staff_model.clone(),
         }),
     });
     scene.root_node.children.push(SceneNode {
@@ -285,8 +293,8 @@ fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::
             Vec3::new(-2.0, 0.0, 0.0),
         ),
         children: Vec::new(),
-        kind: SceneNodeKind::Mesh(MeshNode {
-            mesh: basic_staff_mesh.clone(),
+        kind: SceneNodeKind::Mesh(ModelNode {
+            model: basic_staff_model.clone(),
         }),
     });
 
@@ -308,8 +316,8 @@ fn load_scene(asset_manager: &AssetManager, renderer: &mut Renderer) -> anyhow::
                 Vec3::new(tx, ty, tz),
             ),
             children: Vec::new(),
-            kind: SceneNodeKind::Mesh(MeshNode {
-                mesh: book_mesh.clone(),
+            kind: SceneNodeKind::Mesh(ModelNode {
+                model: book_model.clone(),
             }),
         });
     }

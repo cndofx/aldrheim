@@ -5,10 +5,10 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
-    asset_manager::AssetManager,
+    asset_manager::{AssetManager, ModelAsset, Texture2DAsset},
     scene::Camera,
     xnb::{
-        self,
+        self, XnbContent,
         asset::{
             XnbAsset,
             vertex_decl::{ElementUsage, VertexDeclaration},
@@ -27,14 +27,6 @@ pub struct Renderer {
 
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
     linear_sampler: wgpu::Sampler,
-
-    // using `Rc` instead of `Weak` so that resources arent immediately dropped
-    // when no longer used. if all the "goblin" enemies died, the goblin mesh
-    // would disappear, even though the game is likely to need the goblin mesh
-    // again. i'm thinking all meshes should be loaded during a loading screen,
-    // and all unneeded meshes are dropped during that same loading screen
-    meshes: Vec<Rc<Mesh>>,
-    textures: Vec<Rc<wgpu::Texture>>, // i think wgpu resources are already refcounted? but i cant query the reference count
 }
 
 impl Renderer {
@@ -117,15 +109,13 @@ impl Renderer {
             depth_texture,
             render_deferred_effect_pipeline,
             linear_sampler,
-            meshes: Vec::new(),
-            textures: Vec::new(),
         };
         Ok(renderer)
     }
 
     pub fn render(
         &mut self,
-        draw_commands: &[MeshDrawCommand],
+        draw_commands: &[ModelDrawCommand],
         camera: &Camera,
     ) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
@@ -189,12 +179,12 @@ impl Renderer {
             for draw in draw_commands {
                 // TODO: this assumes that all pipelines use the same bind groups and does no sorting or batching
 
-                render_pass.set_pipeline(&draw.mesh.pipeline);
-                render_pass.set_bind_group(0, &draw.mesh.vertex_buffer_bind_group, &[]);
-                render_pass.set_bind_group(1, &draw.mesh.vertex_layout_uniform_bind_group, &[]);
-                render_pass.set_bind_group(2, &draw.mesh.texture_bind_group, &[]);
+                render_pass.set_pipeline(&draw.model.pipeline);
+                render_pass.set_bind_group(0, &draw.model.vertex_buffer_bind_group, &[]);
+                render_pass.set_bind_group(1, &draw.model.vertex_layout_uniform_bind_group, &[]);
+                render_pass.set_bind_group(2, &draw.model.texture.bind_group, &[]);
                 render_pass
-                    .set_index_buffer(draw.mesh.index_buffer.slice(..), draw.mesh.index_format);
+                    .set_index_buffer(draw.model.index_buffer.slice(..), draw.model.index_format);
 
                 let mvp = projection * view * draw.transform;
                 render_pass.set_push_constants(
@@ -204,8 +194,8 @@ impl Renderer {
                 );
 
                 render_pass.draw_indexed(
-                    draw.mesh.start_index..draw.mesh.start_index + draw.mesh.index_count,
-                    draw.mesh.base_vertex as i32,
+                    draw.model.start_index..draw.model.start_index + draw.model.index_count,
+                    draw.model.base_vertex as i32,
                     0..1,
                 );
             }
@@ -237,52 +227,14 @@ impl Renderer {
         self.resize(size.width, size.height);
     }
 
-    pub fn load_model_from_path(
-        &mut self,
-        path: impl AsRef<Path>,
-        asset_manager: &AssetManager,
-    ) -> anyhow::Result<Rc<Mesh>> {
-        let path = path.as_ref();
-
-        let model_xnb = asset_manager.load_xnb(path)?;
-        let model_content = model_xnb.parse_content()?;
-        let XnbAsset::Model(model) = &model_content.primary_asset else {
-            anyhow::bail!("expected model at path {}", path.display());
-        };
-        let XnbAsset::RenderDeferredEffect(effect) = &model_content.shared_assets[0] else {
-            anyhow::bail!(
-                "expected render deferred effect in model at path {}",
-                path.display()
-            );
-        };
-
-        let texture = self.load_texture_2d_from_relative_path(
-            path,
-            &effect.material_0.diffuse_texture,
-            asset_manager,
-        )?;
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
+    pub fn load_model(
+        &self,
+        model: &xnb::Model,
+        texture: Rc<Texture2DAsset>,
+    ) -> anyhow::Result<ModelAsset> {
         let mesh0 = &model.meshes[0];
         let part0 = &mesh0.parts[0];
         let vertex_decl = &model.vertex_decls[part0.vertex_decl_index as usize];
-
-        let vertex_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: &mesh0.vertex_buffer.data,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-
-        let index_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: &mesh0.index_buffer.data,
-                usage: wgpu::BufferUsages::INDEX,
-            });
-
         let index_format = if mesh0.index_buffer.is_16_bit {
             wgpu::IndexFormat::Uint16
         } else {
@@ -291,17 +243,6 @@ impl Renderer {
         let index_count = part0.primitive_count * 3;
         let start_index = part0.start_index;
         let base_vertex = part0.base_vertex;
-
-        let vertex_buffer_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Vertex Buffer Bind Group"),
-            layout: &self
-                .render_deferred_effect_pipeline
-                .vertex_buffer_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
-            }],
-        });
 
         let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(vertex_decl)?;
         let vertex_layout_uniform_buffer =
@@ -325,24 +266,34 @@ impl Renderer {
                 }],
             });
 
-        let texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Texture Bind Group"),
+        let vertex_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: &mesh0.vertex_buffer.data,
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+
+        let index_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: &mesh0.index_buffer.data,
+                usage: wgpu::BufferUsages::INDEX,
+            });
+
+        let vertex_buffer_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Vertex Buffer Bind Group"),
             layout: &self
                 .render_deferred_effect_pipeline
-                .texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                },
-            ],
+                .vertex_buffer_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
+            }],
         });
 
-        let mesh = Mesh {
+        Ok(ModelAsset {
             pipeline: self.render_deferred_effect_pipeline.pipeline.clone(),
             vertex_buffer,
             vertex_buffer_bind_group,
@@ -353,18 +304,12 @@ impl Renderer {
             index_count,
             start_index,
             base_vertex,
-            texture_bind_group,
-        };
-
-        Ok(Rc::new(mesh))
+            texture,
+        })
     }
 
-    pub fn load_texture_2d(
-        &mut self,
-        texture: &xnb::asset::texture_2d::Texture2D,
-    ) -> anyhow::Result<Rc<wgpu::Texture>> {
+    pub fn load_texture_2d(&self, texture: &xnb::Texture2D) -> anyhow::Result<Texture2DAsset> {
         let texture_format = texture.format.to_wgpu();
-        dbg!(texture_format);
 
         let texture_size = wgpu::Extent3d {
             width: texture.width,
@@ -391,7 +336,6 @@ impl Renderer {
                 height: (texture.height / 2u32.pow(i as u32)).max(texture.format.block_dim()),
                 depth_or_array_layers: 1,
             };
-            dbg!(i, mip_size);
 
             self.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -410,31 +354,30 @@ impl Renderer {
             );
         }
 
-        Ok(Rc::new(wgpu_texture))
-    }
+        let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    pub fn load_texture_2d_from_relative_path(
-        &mut self,
-        base: impl AsRef<Path>,
-        relative: impl AsRef<Path>,
-        asset_manager: &AssetManager,
-    ) -> anyhow::Result<Rc<wgpu::Texture>> {
-        let base = base.as_ref();
-        let relative = relative.as_ref();
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout: &self
+                .render_deferred_effect_pipeline
+                .texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                },
+            ],
+        });
 
-        let texture_xnb = asset_manager.load_xnb_relative(base, relative)?;
-        let texture_content = texture_xnb.parse_content()?;
-        let XnbAsset::Texture2D(texture) = &texture_content.primary_asset else {
-            anyhow::bail!(
-                "expected texture at relative path {} (base {})",
-                relative.display(),
-                base.display(),
-            );
-        };
-
-        let texture = self.load_texture_2d(texture)?;
-
-        Ok(texture)
+        Ok(Texture2DAsset {
+            texture: wgpu_texture,
+            view,
+            bind_group,
+        })
     }
 }
 
@@ -568,22 +511,8 @@ impl RenderDeferredEffectPipeline {
     }
 }
 
-pub struct Mesh {
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    vertex_buffer_bind_group: wgpu::BindGroup,
-    vertex_layout_uniform_buffer: wgpu::Buffer,
-    vertex_layout_uniform_bind_group: wgpu::BindGroup,
-    index_buffer: wgpu::Buffer,
-    index_format: wgpu::IndexFormat,
-    index_count: u32,
-    start_index: u32,
-    base_vertex: u32,
-    texture_bind_group: wgpu::BindGroup,
-}
-
-pub struct MeshDrawCommand {
-    pub mesh: Rc<Mesh>,
+pub struct ModelDrawCommand {
+    pub model: Rc<ModelAsset>,
     pub transform: Mat4,
 }
 

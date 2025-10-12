@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use glam::{Mat4, Vec3};
 
-use crate::renderer::{self, MeshDrawCommand};
+use crate::{asset_manager::ModelAsset, renderer::ModelDrawCommand};
 
 pub struct Scene {
     pub root_node: SceneNode,
@@ -29,9 +29,10 @@ impl Scene {
         }
     }
 
-    pub fn render(&self) -> Vec<MeshDrawCommand> {
+    pub fn render(&self) -> Vec<ModelDrawCommand> {
         let mut draw_commands = Vec::new();
         let mut transform_stack = Vec::new();
+        transform_stack.push(Mat4::IDENTITY);
         self.root_node
             .render(&mut draw_commands, &mut transform_stack);
 
@@ -49,16 +50,16 @@ pub struct SceneNode {
 impl SceneNode {
     pub fn render(
         &self,
-        draw_commands: &mut Vec<MeshDrawCommand>,
+        draw_commands: &mut Vec<ModelDrawCommand>,
         transform_stack: &mut Vec<Mat4>,
     ) {
-        let parent_transform = *transform_stack.last().unwrap_or(&Mat4::IDENTITY);
+        let parent_transform = *transform_stack.last().unwrap();
         let current_transform = parent_transform * self.transform;
         transform_stack.push(current_transform);
 
         match &self.kind {
-            SceneNodeKind::Mesh(mesh) => draw_commands.push(MeshDrawCommand {
-                mesh: mesh.mesh.clone(),
+            SceneNodeKind::Mesh(mesh) => draw_commands.push(ModelDrawCommand {
+                model: mesh.model.clone(),
                 transform: current_transform,
             }),
             _ => {}
@@ -74,11 +75,11 @@ impl SceneNode {
 
 pub enum SceneNodeKind {
     Empty,
-    Mesh(MeshNode),
+    Mesh(ModelNode),
 }
 
-pub struct MeshNode {
-    pub mesh: Rc<renderer::Mesh>,
+pub struct ModelNode {
+    pub model: Rc<ModelAsset>,
 }
 
 #[derive(Debug)]

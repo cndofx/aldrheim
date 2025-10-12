@@ -9,6 +9,9 @@ use crate::{read_ext::MyReadBytesExt, xnb::asset::XnbAsset};
 
 pub mod asset;
 
+pub use asset::model::Model;
+pub use asset::texture_2d::Texture2D;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
     Windows,

@@ -1,72 +1,153 @@
 use std::{
+    collections::HashMap,
     io::BufReader,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
-use crate::xnb::Xnb;
+use anyhow::Context;
+
+use crate::{
+    renderer::Renderer,
+    xnb::{Xnb, XnbContent, asset::XnbAsset},
+};
 
 pub struct AssetManager {
     magicka_path: PathBuf,
+
+    // using `Rc` instead of `Weak` so that resources arent immediately dropped
+    // when no longer used. if all the "goblin" enemies died, the goblin mesh
+    // would disappear, even though the game is likely to need the goblin mesh
+    // again. i'm thinking all meshes should be loaded during a loading screen,
+    // and all unneeded meshes are dropped during that same loading screen
+    textures_2d: HashMap<PathBuf, Rc<Texture2DAsset>>,
+    models: HashMap<PathBuf, Rc<ModelAsset>>,
 }
 
 impl AssetManager {
     pub fn new(magicka_path: impl Into<PathBuf>) -> Self {
         AssetManager {
             magicka_path: magicka_path.into(),
+            textures_2d: HashMap::new(),
+            models: HashMap::new(),
         }
     }
 
-    /// load an xnb from a path relative to the magicka install directory
-    pub fn load_xnb(&self, path: impl AsRef<Path>) -> anyhow::Result<Xnb> {
-        let xnb = self.load_xnb_relative(&self.magicka_path, path)?;
-        Ok(xnb)
+    pub fn load_texture_2d(
+        &mut self,
+        path: &Path,
+        base: Option<&Path>,
+        renderer: &Renderer,
+    ) -> anyhow::Result<Rc<Texture2DAsset>> {
+        let path = self.resolve_xnb_path(path.as_ref(), base.as_ref().map(|v| v.as_ref()))?;
+        if let Some(texture) = self.textures_2d.get(&path) {
+            return Ok(texture.clone());
+        }
+
+        let content = self.load_xnb_content(&path)?;
+        let XnbAsset::Texture2D(texture) = &content.primary_asset else {
+            anyhow::bail!("expected Texture2D at path {}", path.display());
+        };
+
+        let texture = renderer.load_texture_2d(texture)?;
+        let texture = Rc::new(texture);
+
+        log::debug!("loaded Texture2D from file {}", path.display());
+
+        self.textures_2d.insert(path, texture.clone());
+
+        Ok(texture)
     }
 
-    /// load an xnb from a path relative to the given base path
-    pub fn load_xnb_relative(
-        &self,
-        base: impl AsRef<Path>,
-        relative: impl AsRef<Path>,
-    ) -> anyhow::Result<Xnb> {
-        let path = self.resolve_xnb_relative_path(base.as_ref(), relative.as_ref())?;
-        let file = std::fs::File::open(&path)?;
+    pub fn load_model(
+        &mut self,
+        path: &Path,
+        base: Option<&Path>,
+        renderer: &Renderer,
+    ) -> anyhow::Result<Rc<ModelAsset>> {
+        let path = self.resolve_xnb_path(path.as_ref(), base.as_ref().map(|v| v.as_ref()))?;
+        if let Some(model) = self.models.get(&path) {
+            return Ok(model.clone());
+        }
+
+        let model_content = self.load_xnb_content(&path)?;
+        let XnbAsset::Model(model) = &model_content.primary_asset else {
+            anyhow::bail!("expected Model at path {}", path.display());
+        };
+        let XnbAsset::RenderDeferredEffect(effect) = &model_content.shared_assets[0] else {
+            anyhow::bail!(
+                "expected RenderDeferredEffect at shared assets 0 at path {}",
+                path.display()
+            );
+        };
+
+        let texture = self.load_texture_2d(
+            Path::new(&effect.material_0.diffuse_texture),
+            Some(&path),
+            renderer,
+        )?;
+
+        let model = renderer.load_model(model, texture)?;
+        let model = Rc::new(model);
+
+        log::debug!("loaded Model from file {}", path.display());
+
+        self.models.insert(path, model.clone());
+
+        Ok(model)
+    }
+
+    fn load_xnb_content(&self, path: impl AsRef<Path>) -> anyhow::Result<XnbContent> {
+        let path = path.as_ref();
+        let file = std::fs::File::open(path)
+            .with_context(|| format!("failed to open file {}", path.display()))?;
         let mut reader = BufReader::new(file);
         let xnb = Xnb::read(&mut reader)?;
-        Ok(xnb)
+        let content = xnb
+            .parse_content()
+            .with_context(|| format!("failed to parse content from file {}", path.display()))?;
+        Ok(content)
     }
 
-    /// because the relative paths in xnb files rely on windows fs case insensitivity
-    /// and this does not work on case sensitive filesystems
-    ///
-    /// - base path must exist on case sensitive filesystems
-    /// - relative path is not required to have a .xnb extension
-    pub fn resolve_xnb_relative_path(
-        &self,
-        base: &Path,
-        relative: &Path,
-    ) -> anyhow::Result<PathBuf> {
-        let joined = base.join(&relative);
-        if joined.exists() {
-            return Ok(joined);
+    /// - `path` is a file path relative the magicka installation root.
+    ///    the casing needn't match the filesystem, and an `xnb` extension will be added if not present.
+    /// - `base` is the directory `path` is relative to. this path must exist on case sensitive filesystems.
+    ///   - if `base` is `None`, the root Magicka installation directory is assumed.
+    ///   - if `base` is a relative path, it is appended to the root Magicka installation directory.
+    ///   - if `base` is a file path, the parent directory will be used.
+    fn resolve_xnb_path(&self, path: &Path, base: Option<&Path>) -> anyhow::Result<PathBuf> {
+        // default to magicka install dir
+        let mut base = base
+            .map(|b| b.to_owned())
+            .unwrap_or(self.magicka_path.clone());
+
+        // make base path absolute
+        if !base.has_root() {
+            base = self.magicka_path.join(base);
         }
 
-        let relative = if relative.extension().is_none() {
-            relative.with_extension("xnb")
-        } else {
-            relative.to_owned()
-        };
-
-        let mut current_path = if base.has_root() {
-            base.to_owned()
-        } else {
-            self.magicka_path.join(base)
-        };
-
-        if current_path.is_file() {
-            current_path.pop();
+        // make base path a directory
+        if !base.is_dir() {
+            base.pop();
         }
 
-        for component in relative.components() {
+        // ensure path has an extension (relative paths stored inside XNBs dont have .xnb extensions)
+        let path = if path.extension().is_none() {
+            path.with_extension("xnb")
+        } else {
+            path.to_owned()
+        };
+
+        // short circuit if the casing is already correct
+        let full_path = base.join(&path);
+        if full_path.exists() {
+            // canonicalize might be unnecessary but we're hashing paths
+            return Ok(full_path.canonicalize()?);
+        }
+
+        // recursively match each component of the relative path case-insensitively
+        let mut current_path = base;
+        for component in path.components() {
             match component {
                 std::path::Component::CurDir => {}
                 std::path::Component::ParentDir => {
@@ -97,6 +178,27 @@ impl AssetManager {
             }
         }
 
-        Ok(current_path)
+        // canonicalize might be unnecessary but we're hashing paths
+        Ok(current_path.canonicalize()?)
     }
+}
+
+pub struct Texture2DAsset {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub bind_group: wgpu::BindGroup,
+}
+
+pub struct ModelAsset {
+    pub pipeline: wgpu::RenderPipeline,
+    pub vertex_buffer: wgpu::Buffer,
+    pub vertex_buffer_bind_group: wgpu::BindGroup,
+    pub vertex_layout_uniform_buffer: wgpu::Buffer,
+    pub vertex_layout_uniform_bind_group: wgpu::BindGroup,
+    pub index_buffer: wgpu::Buffer,
+    pub index_format: wgpu::IndexFormat,
+    pub index_count: u32,
+    pub start_index: u32,
+    pub base_vertex: u32,
+    pub texture: Rc<Texture2DAsset>,
 }

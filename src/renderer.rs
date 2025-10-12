@@ -21,7 +21,7 @@ pub struct Renderer {
     queue: wgpu::Queue,
     depth_texture: wgpu::Texture,
     placeholder_texture: wgpu::Texture,
-    placeholder_texture_bind_group: wgpu::BindGroup,
+    placeholder_texture_view: wgpu::TextureView,
     pub window: Arc<Window>,
 
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
@@ -87,9 +87,9 @@ impl Renderer {
 
         let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
@@ -116,20 +116,6 @@ impl Renderer {
         });
         let placeholder_texture_view =
             placeholder_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let placeholder_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Placeholder Texture Bind Group"),
-            layout: &render_deferred_effect_pipeline.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&placeholder_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&linear_sampler),
-                },
-            ],
-        });
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &placeholder_texture,
@@ -155,7 +141,7 @@ impl Renderer {
             window,
             depth_texture,
             placeholder_texture,
-            placeholder_texture_bind_group,
+            placeholder_texture_view,
             render_deferred_effect_pipeline,
             linear_sampler,
         };
@@ -265,7 +251,7 @@ impl Renderer {
                             &bitree_node.tree.vertex_layout_uniform_bind_group,
                             &[],
                         );
-                        render_pass.set_bind_group(2, &self.placeholder_texture_bind_group, &[]);
+                        render_pass.set_bind_group(2, &bitree_node.tree.texture_bind_group, &[]);
                         render_pass.set_push_constants(
                             wgpu::ShaderStages::VERTEX,
                             0,
@@ -314,7 +300,12 @@ impl Renderer {
         self.resize(size.width, size.height);
     }
 
-    pub fn load_bitree(&self, tree: &xnb::BiTree) -> anyhow::Result<BiTreeAsset> {
+    pub fn load_bitree(
+        &self,
+        tree: &xnb::BiTree,
+        diffuse_texture_0: Option<Rc<Texture2DAsset>>,
+        diffuse_texture_1: Option<Rc<Texture2DAsset>>,
+    ) -> anyhow::Result<BiTreeAsset> {
         let index_format = tree.index_buffer.wgpu_format();
 
         let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(&tree.vertex_decl)?;
@@ -366,6 +357,39 @@ impl Renderer {
             }],
         });
 
+        let texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout: &self
+                .render_deferred_effect_pipeline
+                .texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        if let Some(diffuse_0) = &diffuse_texture_0 {
+                            &diffuse_0.view
+                        } else {
+                            &self.placeholder_texture_view
+                        },
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(
+                        if let Some(diffuse_1) = &diffuse_texture_1 {
+                            &diffuse_1.view
+                        } else {
+                            &self.placeholder_texture_view
+                        },
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                },
+            ],
+        });
+
         Ok(BiTreeAsset {
             vertex_buffer,
             vertex_buffer_bind_group,
@@ -373,6 +397,9 @@ impl Renderer {
             vertex_layout_uniform_bind_group,
             index_buffer,
             index_format,
+            texture_bind_group,
+            diffuse_texture_0,
+            diffuse_texture_1,
         })
     }
 
@@ -501,27 +528,9 @@ impl Renderer {
 
         let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Texture Bind Group"),
-            layout: &self
-                .render_deferred_effect_pipeline
-                .texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                },
-            ],
-        });
-
         Ok(Texture2DAsset {
             texture: wgpu_texture,
             view,
-            bind_group,
         })
     }
 }
@@ -584,6 +593,16 @@ impl RenderDeferredEffectPipeline {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
@@ -672,26 +691,29 @@ struct VertexLayoutUniform {
     stride: u32,
     position: i32,
     normal: i32,
-    tangent: i32,
+    tangent_0: i32,
+    tangent_1: i32,
     color: i32,
-    tex_coord_0: i32,
-    tex_coord_1: i32,
+    tex_coords_0: i32,
+    tex_coords_1: i32,
+    has_material_1: i32,
 }
 
 impl VertexLayoutUniform {
     fn from_xnb_decl(decl: &VertexDeclaration) -> anyhow::Result<Self> {
         let mut position = -1;
         let mut normal = -1;
-        let mut tangent = -1;
+        let mut tangent_0 = -1;
+        let mut tangent_1 = -1;
         let mut color = -1;
-        let mut tex_coord_0 = -1;
-        let mut tex_coord_1 = -1;
+        let mut tex_coords_0 = -1;
+        let mut tex_coords_1 = -1;
 
         let mut ignored_positions = 0;
         let mut ignored_normals = 0;
         let mut ignored_tangents = 0;
         let mut ignored_colors = 0;
-        let mut ignored_texcoords = 0;
+        let mut ignored_tex_coords = 0;
 
         for el in &decl.elements {
             let offset = el.offset as i32;
@@ -711,8 +733,10 @@ impl VertexLayoutUniform {
                     }
                 }
                 ElementUsage::Tangent => {
-                    if tangent < 0 {
-                        tangent = offset;
+                    if tangent_0 < 0 {
+                        tangent_0 = offset;
+                    } else if tangent_1 < 0 {
+                        tangent_1 = offset;
                     } else {
                         ignored_tangents += 1;
                     }
@@ -725,12 +749,12 @@ impl VertexLayoutUniform {
                     }
                 }
                 ElementUsage::TextureCoordinate => {
-                    if tex_coord_0 < 0 {
-                        tex_coord_0 = offset;
-                    } else if tex_coord_1 < 0 {
-                        tex_coord_1 = offset;
+                    if tex_coords_0 < 0 {
+                        tex_coords_0 = offset;
+                    } else if tex_coords_1 < 0 {
+                        tex_coords_1 = offset;
                     } else {
-                        ignored_texcoords += 1;
+                        ignored_tex_coords += 1;
                     }
                 }
                 _ => anyhow::bail!("unsupported vertex usage '{:?}'", el.usage),
@@ -747,7 +771,7 @@ impl VertexLayoutUniform {
             anyhow::bail!("missing vertex element 'normal'");
         }
 
-        if tex_coord_0 == -1 {
+        if tex_coords_0 == -1 {
             anyhow::bail!("missing vertex element 'tex_coord'");
         }
 
@@ -755,10 +779,12 @@ impl VertexLayoutUniform {
             stride: decl.stride() as u32,
             position,
             normal,
-            tangent,
+            tangent_0,
+            tangent_1,
             color,
-            tex_coord_0,
-            tex_coord_1,
+            tex_coords_0,
+            tex_coords_1,
+            has_material_1: 0,
         })
     }
 }

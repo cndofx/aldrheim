@@ -46,7 +46,7 @@ impl App {
 
             last_time: Instant::now(),
             camera_input_state: InputState::default(),
-            camera_speed: 2.0,
+            camera_speed: 5.0,
             cursor_grabbed: false,
         };
         Ok(app)
@@ -84,7 +84,7 @@ impl App {
 
             let mut amount = self.camera_speed * (dt as f32);
             if self.camera_input_state.fast {
-                amount *= 3.0;
+                amount *= 4.0;
             }
 
             scene.camera.position += forward * camera_move_direction.z * amount;

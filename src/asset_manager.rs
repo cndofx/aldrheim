@@ -84,7 +84,7 @@ impl AssetManager {
         };
 
         let texture = self.load_texture_2d(
-            Path::new(&effect.material_0.diffuse_texture),
+            &fix_xnb_path(&effect.material_0.diffuse_texture),
             Some(&path),
             renderer,
         )?;
@@ -121,9 +121,42 @@ impl AssetManager {
 
         for tree in &level_model.model.trees {
             debug_assert_eq!(tree.vertex_stride as usize, tree.vertex_decl.stride());
-            let asset = renderer.load_bitree(tree)?;
+
+            let XnbAsset::RenderDeferredEffect(effect) = &tree.effect else {
+                anyhow::bail!("expected RenderDeferredEffect inside LevelModel BiTree");
+            };
+            dbg!(&tree.vertex_decl, effect);
+            println!("\n\n\n");
+
+            let diffuse_texture_0 = if effect.material_0.diffuse_texture.len() > 0 {
+                Some(self.load_texture_2d(
+                    &fix_xnb_path(&effect.material_0.diffuse_texture),
+                    Some(&path),
+                    renderer,
+                )?)
+            } else {
+                None
+            };
+
+            let diffuse_texture_1 = if let Some(material_1) = &effect.material_1 {
+                if material_1.diffuse_texture.len() > 0 {
+                    Some(self.load_texture_2d(
+                        &fix_xnb_path(&effect.material_0.diffuse_texture),
+                        Some(&path),
+                        renderer,
+                    )?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let asset = renderer.load_bitree(tree, diffuse_texture_0, diffuse_texture_1)?;
             load_level_model_bitree_node_recursive(&mut scene_node, &tree.node, Rc::new(asset))?;
         }
+
+        log::debug!("loaded LevelModel from file {}", path.display());
 
         Ok(scene_node)
     }
@@ -216,7 +249,6 @@ impl AssetManager {
 pub struct Texture2DAsset {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    pub bind_group: wgpu::BindGroup,
 }
 
 pub struct ModelAsset {
@@ -240,6 +272,9 @@ pub struct BiTreeAsset {
     pub vertex_layout_uniform_bind_group: wgpu::BindGroup,
     pub index_buffer: wgpu::Buffer,
     pub index_format: wgpu::IndexFormat,
+    pub texture_bind_group: wgpu::BindGroup,
+    pub diffuse_texture_0: Option<Rc<Texture2DAsset>>,
+    pub diffuse_texture_1: Option<Rc<Texture2DAsset>>,
 }
 
 fn load_level_model_bitree_node_recursive(
@@ -265,4 +300,9 @@ fn load_level_model_bitree_node_recursive(
     parent.children.push(node);
 
     Ok(())
+}
+
+fn fix_xnb_path(path: &str) -> PathBuf {
+    let path = path.replace('\\', "/");
+    PathBuf::from(path)
 }

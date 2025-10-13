@@ -242,8 +242,6 @@ struct InputState {
     fast: bool,
 }
 
-// TODO: most of the pink stuff around the levels is probably meant to be using vertex colors?
-
 // TODO: NOT YET LOADING LEVELS:
 // - ch_dungeons_ch2_s1.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
 // - ch_dungeons_ch2_s2.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
@@ -254,7 +252,8 @@ struct InputState {
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
     let havindr_arena = asset_manager.load_level_model(
         // Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
-        Path::new("Content/Levels/Challenges/ch_dungeons_ch2_s3.xnb"),
+        // Path::new("Content/Levels/Challenges/ch_grimlab_build.xnb"),
+        Path::new("Content/Levels/WizardCastle/wc_s3.xnb"),
         None,
         renderer,
     )?;

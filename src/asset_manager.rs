@@ -11,7 +11,10 @@ use glam::Mat4;
 use crate::{
     renderer::Renderer,
     scene::{self, SceneNode, SceneNodeKind},
-    xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
+    xnb::{
+        BiTreeNode, Xnb, XnbContent,
+        asset::{XnbAsset, render_deferred_effect::RenderDeferredEffectUniform},
+    },
 };
 
 pub struct AssetManager {
@@ -124,7 +127,15 @@ impl AssetManager {
             debug_assert_eq!(tree.vertex_stride as usize, tree.vertex_decl.stride());
 
             let XnbAsset::RenderDeferredEffect(effect) = &tree.effect else {
-                anyhow::bail!("expected RenderDeferredEffect inside LevelModel BiTree");
+                if let XnbAsset::AdditiveEffect(_) = &tree.effect {
+                    log::warn!("skipping unimplemented BiTree with AdditiveEffect");
+                    continue;
+                }
+
+                anyhow::bail!(
+                    "expected RenderDeferredEffect inside LevelModel BiTree, got {}",
+                    tree.effect.as_ref()
+                );
             };
             // dbg!(&tree.vertex_decl, effect);
             // println!("\n\n\n");
@@ -153,7 +164,10 @@ impl AssetManager {
                 None
             };
 
-            let asset = renderer.load_bitree(tree, diffuse_texture_0, diffuse_texture_1)?;
+            let effect_uniform = RenderDeferredEffectUniform::new(&effect, &tree.vertex_decl)?;
+
+            let asset =
+                renderer.load_bitree(tree, diffuse_texture_0, diffuse_texture_1, effect_uniform)?;
             load_level_model_bitree_node_recursive(&mut scene_node, &tree.node, Rc::new(asset))?;
         }
 

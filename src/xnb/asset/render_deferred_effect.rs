@@ -2,7 +2,13 @@ use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{read_ext::MyReadBytesExt, xnb::asset::color::Color};
+use crate::{
+    read_ext::MyReadBytesExt,
+    xnb::asset::{
+        color::Color,
+        vertex_decl::{ElementUsage, VertexDeclaration},
+    },
+};
 
 #[derive(Debug)]
 pub struct RenderDeferredEffect {
@@ -81,6 +87,134 @@ impl RenderDeferredEffectMaterial {
             diffuse_texture,
             material_texture,
             normal_texture,
+        })
+    }
+}
+
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
+pub struct RenderDeferredEffectUniform {
+    pub vertex_layout: RenderDeferredEffectVertexLayout,
+    pub diffuse_color_0_r: f32,
+    pub diffuse_color_0_g: f32,
+    pub diffuse_color_0_b: f32,
+    pub vertex_color_enabled: i32,
+    pub has_material_1: i32,
+}
+
+impl RenderDeferredEffectUniform {
+    pub fn new(effect: &RenderDeferredEffect, decl: &VertexDeclaration) -> anyhow::Result<Self> {
+        let layout = RenderDeferredEffectVertexLayout::new(decl)?;
+
+        Ok(RenderDeferredEffectUniform {
+            vertex_layout: layout,
+            diffuse_color_0_r: effect.material_0.diffuse_color.r,
+            diffuse_color_0_g: effect.material_0.diffuse_color.g,
+            diffuse_color_0_b: effect.material_0.diffuse_color.b,
+            vertex_color_enabled: if effect.vertex_color_enabled { 1 } else { 0 },
+            has_material_1: if effect.material_1.is_some() { 1 } else { 0 },
+        })
+    }
+}
+
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
+pub struct RenderDeferredEffectVertexLayout {
+    pub stride: u32,
+    pub position: i32,
+    pub normal: i32,
+    pub tangent_0: i32,
+    pub tangent_1: i32,
+    pub color: i32,
+    pub tex_coords_0: i32,
+    pub tex_coords_1: i32,
+}
+
+impl RenderDeferredEffectVertexLayout {
+    pub fn new(decl: &VertexDeclaration) -> anyhow::Result<Self> {
+        let mut position = -1;
+        let mut normal = -1;
+        let mut tangent_0 = -1;
+        let mut tangent_1 = -1;
+        let mut color = -1;
+        let mut tex_coords_0 = -1;
+        let mut tex_coords_1 = -1;
+
+        let mut ignored_positions = 0;
+        let mut ignored_normals = 0;
+        let mut ignored_tangents = 0;
+        let mut ignored_colors = 0;
+        let mut ignored_tex_coords = 0;
+
+        for el in &decl.elements {
+            let offset = el.offset as i32;
+            match el.usage {
+                ElementUsage::Position => {
+                    if position < 0 {
+                        position = offset;
+                    } else {
+                        ignored_positions += 1;
+                    }
+                }
+                ElementUsage::Normal => {
+                    if normal < 0 {
+                        normal = offset;
+                    } else {
+                        ignored_normals += 1;
+                    }
+                }
+                ElementUsage::Tangent => {
+                    if tangent_0 < 0 {
+                        tangent_0 = offset;
+                    } else if tangent_1 < 0 {
+                        tangent_1 = offset;
+                    } else {
+                        ignored_tangents += 1;
+                    }
+                }
+                ElementUsage::Color => {
+                    if color < 0 {
+                        color = offset;
+                    } else {
+                        ignored_colors += 1;
+                    }
+                }
+                ElementUsage::TextureCoordinate => {
+                    if tex_coords_0 < 0 {
+                        tex_coords_0 = offset;
+                    } else if tex_coords_1 < 0 {
+                        tex_coords_1 = offset;
+                    } else {
+                        ignored_tex_coords += 1;
+                    }
+                }
+                _ => anyhow::bail!("unsupported vertex usage '{:?}'", el.usage),
+            }
+        }
+
+        // TODO: figure out which are actually required and implement proper fallbacks for the rest
+
+        if position == -1 {
+            anyhow::bail!("missing vertex element 'position'");
+        }
+
+        if normal == -1 {
+            anyhow::bail!("missing vertex element 'normal'");
+        }
+
+        if tex_coords_0 == -1 {
+            anyhow::bail!("missing vertex element 'tex_coord'");
+        }
+
+        Ok(RenderDeferredEffectVertexLayout {
+            stride: decl.stride() as u32,
+            position,
+            normal,
+            tangent_0,
+            tangent_1,
+            color,
+            tex_coords_0,
+            tex_coords_1,
         })
     }
 }

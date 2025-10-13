@@ -7,10 +7,7 @@ use winit::window::Window;
 use crate::{
     asset_manager::{BiTreeAsset, ModelAsset, Texture2DAsset},
     scene::{self, Camera},
-    xnb::{
-        self,
-        asset::vertex_decl::{ElementUsage, VertexDeclaration},
-    },
+    xnb::{self, asset::render_deferred_effect::RenderDeferredEffectUniform},
 };
 
 pub struct Renderer {
@@ -153,6 +150,17 @@ impl Renderer {
         draw_commands: &[ModelDrawCommand],
         camera: &Camera,
     ) -> Result<(), wgpu::SurfaceError> {
+        // TODO: future optimizations
+        // performance is currently *fine*, and maybe will continue to be fine,
+        // but early profiling seems to show that rendering performance is heavily
+        // bottlenecked by memory access latency, seemingly due to my method of
+        // storing vertex data in a storage buffer and looking up vertex data dynamically
+        // based on a uniform. some alternative options are:
+        // - create multiple versions of the pipeline for different vertex layouts (probably not a great idea, too many possibilities)
+        // - at load time, parse vertex data and transcode it into a fixed layout that the pipeline can optimize for (possible memory overhead for unused attributes)
+        // - at load time, parse vertex data into multiple vertex buffers and only bind ones that are used (uncertain tradeoffs?)
+        // maybe throw in zeux/meshoptimizer too if we're preprocessing vertex data anyway
+
         self.window.request_redraw();
 
         if !self.is_surface_configured {
@@ -305,20 +313,20 @@ impl Renderer {
         tree: &xnb::BiTree,
         diffuse_texture_0: Option<Rc<Texture2DAsset>>,
         diffuse_texture_1: Option<Rc<Texture2DAsset>>,
+        effect_uniform: RenderDeferredEffectUniform,
     ) -> anyhow::Result<BiTreeAsset> {
         let index_format = tree.index_buffer.wgpu_format();
 
-        let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(&tree.vertex_decl)?;
         let vertex_layout_uniform_buffer =
             self.device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Layout Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[vertex_layout_uniform]),
+                    label: Some("Effect Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[effect_uniform]),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
         let vertex_layout_uniform_bind_group =
             self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Vertex Layout Uniform Bind Group"),
+                label: Some("Effect Uniform Bind Group"),
                 layout: &self
                     .render_deferred_effect_pipeline
                     .vertex_layout_uniform_bind_group_layout,
@@ -409,76 +417,78 @@ impl Renderer {
         model: &xnb::Model,
         texture: Rc<Texture2DAsset>,
     ) -> anyhow::Result<ModelAsset> {
-        let mesh0 = &model.meshes[0];
-        let part0 = &mesh0.parts[0];
-        let vertex_decl = &model.vertex_decls[part0.vertex_decl_index as usize];
-        let index_format = mesh0.index_buffer.wgpu_format();
-        let index_count = part0.primitive_count * 3;
-        let start_index = part0.start_index;
-        let base_vertex = part0.base_vertex;
+        todo!()
 
-        let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(vertex_decl)?;
-        let vertex_layout_uniform_buffer =
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Layout Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[vertex_layout_uniform]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
-        let vertex_layout_uniform_bind_group =
-            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Vertex Layout Uniform Bind Group"),
-                layout: &self
-                    .render_deferred_effect_pipeline
-                    .vertex_layout_uniform_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(
-                        vertex_layout_uniform_buffer.as_entire_buffer_binding(),
-                    ),
-                }],
-            });
+        // let mesh0 = &model.meshes[0];
+        // let part0 = &mesh0.parts[0];
+        // let vertex_decl = &model.vertex_decls[part0.vertex_decl_index as usize];
+        // let index_format = mesh0.index_buffer.wgpu_format();
+        // let index_count = part0.primitive_count * 3;
+        // let start_index = part0.start_index;
+        // let base_vertex = part0.base_vertex;
 
-        let vertex_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: &mesh0.vertex_buffer.data,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        // let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(vertex_decl)?;
+        // let vertex_layout_uniform_buffer =
+        //     self.device
+        //         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //             label: Some("Vertex Layout Uniform Buffer"),
+        //             contents: bytemuck::cast_slice(&[vertex_layout_uniform]),
+        //             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        //         });
+        // let vertex_layout_uniform_bind_group =
+        //     self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //         label: Some("Vertex Layout Uniform Bind Group"),
+        //         layout: &self
+        //             .render_deferred_effect_pipeline
+        //             .vertex_layout_uniform_bind_group_layout,
+        //         entries: &[wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: wgpu::BindingResource::Buffer(
+        //                 vertex_layout_uniform_buffer.as_entire_buffer_binding(),
+        //             ),
+        //         }],
+        //     });
 
-        let index_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: &mesh0.index_buffer.data,
-                usage: wgpu::BufferUsages::INDEX,
-            });
+        // let vertex_buffer = self
+        //     .device
+        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("Vertex Buffer"),
+        //         contents: &mesh0.vertex_buffer.data,
+        //         usage: wgpu::BufferUsages::STORAGE,
+        //     });
 
-        let vertex_buffer_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Vertex Buffer Bind Group"),
-            layout: &self
-                .render_deferred_effect_pipeline
-                .vertex_buffer_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
-            }],
-        });
+        // let index_buffer = self
+        //     .device
+        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("Index Buffer"),
+        //         contents: &mesh0.index_buffer.data,
+        //         usage: wgpu::BufferUsages::INDEX,
+        //     });
 
-        Ok(ModelAsset {
-            pipeline: self.render_deferred_effect_pipeline.pipeline.clone(),
-            vertex_buffer,
-            vertex_buffer_bind_group,
-            vertex_layout_uniform_buffer,
-            vertex_layout_uniform_bind_group,
-            index_buffer,
-            index_format,
-            index_count,
-            start_index,
-            base_vertex,
-            texture,
-        })
+        // let vertex_buffer_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     label: Some("Vertex Buffer Bind Group"),
+        //     layout: &self
+        //         .render_deferred_effect_pipeline
+        //         .vertex_buffer_bind_group_layout,
+        //     entries: &[wgpu::BindGroupEntry {
+        //         binding: 0,
+        //         resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
+        //     }],
+        // });
+
+        // Ok(ModelAsset {
+        //     pipeline: self.render_deferred_effect_pipeline.pipeline.clone(),
+        //     vertex_buffer,
+        //     vertex_buffer_bind_group,
+        //     vertex_layout_uniform_buffer,
+        //     vertex_layout_uniform_bind_group,
+        //     index_buffer,
+        //     index_format,
+        //     index_count,
+        //     start_index,
+        //     base_vertex,
+        //     texture,
+        // })
     }
 
     pub fn load_texture_2d(&self, texture: &xnb::Texture2D) -> anyhow::Result<Texture2DAsset> {
@@ -684,110 +694,6 @@ pub enum Renderable {
 pub struct ModelDrawCommand {
     pub renderable: Renderable,
     pub transform: Mat4,
-}
-
-#[repr(C)]
-#[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
-struct VertexLayoutUniform {
-    stride: u32,
-    position: i32,
-    normal: i32,
-    tangent_0: i32,
-    tangent_1: i32,
-    color: i32,
-    tex_coords_0: i32,
-    tex_coords_1: i32,
-    has_material_1: i32,
-}
-
-impl VertexLayoutUniform {
-    fn from_xnb_decl(decl: &VertexDeclaration) -> anyhow::Result<Self> {
-        let mut position = -1;
-        let mut normal = -1;
-        let mut tangent_0 = -1;
-        let mut tangent_1 = -1;
-        let mut color = -1;
-        let mut tex_coords_0 = -1;
-        let mut tex_coords_1 = -1;
-
-        let mut ignored_positions = 0;
-        let mut ignored_normals = 0;
-        let mut ignored_tangents = 0;
-        let mut ignored_colors = 0;
-        let mut ignored_tex_coords = 0;
-
-        for el in &decl.elements {
-            let offset = el.offset as i32;
-            match el.usage {
-                ElementUsage::Position => {
-                    if position < 0 {
-                        position = offset;
-                    } else {
-                        ignored_positions += 1;
-                    }
-                }
-                ElementUsage::Normal => {
-                    if normal < 0 {
-                        normal = offset;
-                    } else {
-                        ignored_normals += 1;
-                    }
-                }
-                ElementUsage::Tangent => {
-                    if tangent_0 < 0 {
-                        tangent_0 = offset;
-                    } else if tangent_1 < 0 {
-                        tangent_1 = offset;
-                    } else {
-                        ignored_tangents += 1;
-                    }
-                }
-                ElementUsage::Color => {
-                    if color < 0 {
-                        color = offset;
-                    } else {
-                        ignored_colors += 1;
-                    }
-                }
-                ElementUsage::TextureCoordinate => {
-                    if tex_coords_0 < 0 {
-                        tex_coords_0 = offset;
-                    } else if tex_coords_1 < 0 {
-                        tex_coords_1 = offset;
-                    } else {
-                        ignored_tex_coords += 1;
-                    }
-                }
-                _ => anyhow::bail!("unsupported vertex usage '{:?}'", el.usage),
-            }
-        }
-
-        // TODO: figure out which are actually required and implement proper fallbacks for the rest
-
-        if position == -1 {
-            anyhow::bail!("missing vertex element 'position'");
-        }
-
-        if normal == -1 {
-            anyhow::bail!("missing vertex element 'normal'");
-        }
-
-        if tex_coords_0 == -1 {
-            anyhow::bail!("missing vertex element 'tex_coord'");
-        }
-
-        Ok(VertexLayoutUniform {
-            stride: decl.stride() as u32,
-            position,
-            normal,
-            tangent_0,
-            tangent_1,
-            color,
-            tex_coords_0,
-            tex_coords_1,
-            has_material_1: 0,
-        })
-    }
 }
 
 pub fn create_depth_texture(

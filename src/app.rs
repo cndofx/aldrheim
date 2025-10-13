@@ -136,7 +136,7 @@ impl App {
         let scene = self.scene.as_mut().unwrap();
         scene.camera.pitch_radians =
             (scene.camera.pitch_radians - delta_y as f32 * 0.002).clamp(-PITCH_MAX, PITCH_MAX);
-        scene.camera.yaw_radians += delta_x as f32 * 0.002;
+        scene.camera.yaw_radians -= delta_x as f32 * 0.002;
     }
 
     fn grab_cursor(&mut self, grab: bool) -> anyhow::Result<()> {

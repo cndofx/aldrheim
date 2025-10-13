@@ -23,9 +23,9 @@ impl Scene {
                 kind: SceneNodeKind::Empty,
             },
             camera: Camera {
-                position: Vec3::new(0.0, 0.0, -5.0),
+                position: Vec3::new(0.0, 5.0, 0.0),
                 pitch_radians: 0.0,
-                yaw_radians: 90.0f32.to_radians(),
+                yaw_radians: 0.0,
                 fov_y_radians: 75.0f32.to_radians(),
                 z_near: 0.1,
                 z_far: 10000.0,
@@ -135,11 +135,11 @@ impl Camera {
         let forward_y = self.pitch_radians.sin();
         let forward_z = self.yaw_radians.cos() * self.pitch_radians.cos();
         let forward = Vec3::new(forward_x, forward_y, forward_z).normalize();
-        let right = up.cross(forward);
+        let right = forward.cross(up);
         (forward, right, up)
     }
 
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_to_lh(self.position, self.forward_right_up().0, Self::UP)
+        Mat4::look_to_rh(self.position, self.forward_right_up().0, Self::UP)
     }
 }

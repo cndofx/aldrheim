@@ -168,7 +168,7 @@ impl Renderer {
         }
 
         let window_size = self.window.inner_size();
-        let projection = Mat4::perspective_lh(
+        let projection = Mat4::perspective_rh(
             camera.fov_y_radians,
             (window_size.width as f32) / (window_size.height as f32),
             camera.z_near,
@@ -659,7 +659,7 @@ impl RenderDeferredEffectPipeline {
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
+                front_face: wgpu::FrontFace::Cw,
                 cull_mode: Some(wgpu::Face::Back),
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,

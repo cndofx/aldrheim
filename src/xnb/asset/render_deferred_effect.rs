@@ -98,13 +98,19 @@ pub struct RenderDeferredEffectUniform {
     pub diffuse_color_0_r: f32,
     pub diffuse_color_0_g: f32,
     pub diffuse_color_0_b: f32,
+    pub diffuse_texture_0_alpha_enabled: i32,
+    pub diffuse_texture_1_alpha_enabled: i32,
     pub vertex_color_enabled: i32,
     pub has_material_1: i32,
+    pub m0_alpha_mask_enabled: i32,
 }
 
 impl RenderDeferredEffectUniform {
     pub fn new(effect: &RenderDeferredEffect, decl: &VertexDeclaration) -> anyhow::Result<Self> {
         let layout = RenderDeferredEffectVertexLayout::new(decl)?;
+
+        println!("\n\n");
+        dbg!(effect, decl);
 
         Ok(RenderDeferredEffectUniform {
             vertex_layout: layout,
@@ -113,6 +119,23 @@ impl RenderDeferredEffectUniform {
             diffuse_color_0_b: effect.material_0.diffuse_color.b,
             vertex_color_enabled: if effect.vertex_color_enabled { 1 } else { 0 },
             has_material_1: if effect.material_1.is_some() { 1 } else { 0 },
+            diffuse_texture_0_alpha_enabled: if effect.material_0.diffuse_texture_alpha_disabled {
+                0
+            } else {
+                1
+            },
+            diffuse_texture_1_alpha_enabled: if let Some(material_1) = &effect.material_1
+                && material_1.diffuse_texture_alpha_disabled
+            {
+                0
+            } else {
+                1
+            },
+            m0_alpha_mask_enabled: if effect.material_0.alpha_mask_enabled {
+                1
+            } else {
+                0
+            },
         })
     }
 }

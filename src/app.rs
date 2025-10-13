@@ -243,23 +243,20 @@ struct InputState {
 }
 
 // TODO: NOT YET LOADING LEVELS:
-// - ch_dungeons_ch2_s1.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
-// - ch_dungeons_ch2_s2.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
-// - probably rest of dungeons ch2
-// - ch_osotc_s3.xnb (error: expected RenderDeferredEffect inside LevelModel BiTree)
 // - ch_volcano_hideout.xnb (needs LavaEffect)
 
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
-    let havindr_arena = asset_manager.load_level_model(
+    let level = asset_manager.load_level_model(
         // Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
         // Path::new("Content/Levels/Challenges/ch_grimlab_build.xnb"),
-        Path::new("Content/Levels/WizardCastle/wc_s3.xnb"),
+        // Path::new("Content/Levels/Highlands/hl_s1.xnb"),
+        Path::new("Content/Levels/WizardCastle/wc_s4.xnb"),
         None,
         renderer,
     )?;
 
     let mut scene = Scene::new();
-    scene.root_node.children.push(havindr_arena);
+    scene.root_node.children.push(level);
 
     // let basic_staff_model = asset_manager.load_model(
     //     Path::new("Content/Models/Items_Wizard/staff_basic_0.xnb"),

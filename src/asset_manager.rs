@@ -153,7 +153,7 @@ impl AssetManager {
             let diffuse_texture_1 = if let Some(material_1) = &effect.material_1 {
                 if material_1.diffuse_texture.len() > 0 {
                     Some(self.load_texture_2d(
-                        &fix_xnb_path(&effect.material_0.diffuse_texture),
+                        &fix_xnb_path(&material_1.diffuse_texture),
                         Some(&path),
                         renderer,
                     )?)

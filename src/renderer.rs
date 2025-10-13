@@ -150,6 +150,12 @@ impl Renderer {
         draw_commands: &[ModelDrawCommand],
         camera: &Camera,
     ) -> Result<(), wgpu::SurfaceError> {
+        // TODO: next required features
+        // - support texture alpha (mostly for foliage, binary alpha, no blending needed?)
+        // - some surfaces are supposed to be a blend between different textures (eg stone and dirt)
+        // - primitive liquid rendering for now just so there is no empty void, proper material can come later
+        // - render background image over clear color if present ("skymap" in level xml?)
+
         // TODO: future optimizations
         // performance is currently *fine*, and maybe will continue to be fine,
         // but early profiling seems to show that rendering performance is heavily
@@ -573,12 +579,12 @@ impl RenderDeferredEffectPipeline {
                 }],
             });
 
-        let vertex_layout_uniform_bind_group_layout =
+        let effect_properties_uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Render Deferred Effect Vertex Layout Uniform Bind Group Layout"),
+                label: Some("Render Deferred Effect Properties Uniform Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -628,7 +634,7 @@ impl RenderDeferredEffectPipeline {
             label: None,
             bind_group_layouts: &[
                 &vertex_buffer_bind_group_layout,
-                &vertex_layout_uniform_bind_group_layout,
+                &effect_properties_uniform_bind_group_layout,
                 &texture_bind_group_layout,
             ],
             push_constant_ranges: &[wgpu::PushConstantRange {
@@ -679,7 +685,7 @@ impl RenderDeferredEffectPipeline {
 
         Ok(RenderDeferredEffectPipeline {
             vertex_buffer_bind_group_layout,
-            vertex_layout_uniform_bind_group_layout,
+            vertex_layout_uniform_bind_group_layout: effect_properties_uniform_bind_group_layout,
             texture_bind_group_layout,
             pipeline,
         })

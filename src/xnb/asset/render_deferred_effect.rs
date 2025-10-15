@@ -94,33 +94,43 @@ impl RenderDeferredEffectMaterial {
 #[repr(C)]
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Debug, Clone, Copy)]
 pub struct RenderDeferredEffectUniform {
-    pub vertex_layout: RenderDeferredEffectVertexLayout,
-    // pub diffuse_color_0_r: f32,
-    // pub diffuse_color_0_g: f32,
-    // pub diffuse_color_0_b: f32,
-    // pub diffuse_texture_0_alpha_enabled: i32,
-    // pub diffuse_texture_1_alpha_enabled: i32,
-    // pub vertex_color_enabled: i32,
-    // pub has_material_1: i32,
-    // pub m0_alpha_mask_enabled: i32,
-    // pub m1_alpha_mask_enabled: i32,
+    pub vertex_layout_stride: u32,
+    pub vertex_layout_position: i32,
+    pub vertex_layout_normal: i32,
+    pub vertex_layout_tangent_0: i32,
+    pub vertex_layout_tangent_1: i32,
+    pub vertex_layout_color: i32,
+    pub vertex_layout_tex_coords_0: i32,
+    pub vertex_layout_tex_coords_1: i32,
+
     pub vertex_color_enabled: i32,
     pub m0_diffuse_color_r: f32,
     pub m0_diffuse_color_g: f32,
     pub m0_diffuse_color_b: f32,
+    pub m0_diffuse_texture_enabled: i32,
     pub m0_diffuse_texture_alpha_enabled: i32,
     pub m0_alpha_mask_enabled: i32,
-    pub has_material_1: i32,
+    pub m1_enabled: i32,
     pub m1_diffuse_color_r: f32,
     pub m1_diffuse_color_g: f32,
     pub m1_diffuse_color_b: f32,
+    pub m1_diffuse_texture_enabled: i32,
     pub m1_diffuse_texture_alpha_enabled: i32,
-    pub m1_alpha_mask_enabled: i32,
+    pub m1_alpha_mask_enabled: i32, // always opposite of m0_alpha_mask_enabled?
 }
 
 impl RenderDeferredEffectUniform {
     pub fn new(effect: &RenderDeferredEffect, decl: &VertexDeclaration) -> anyhow::Result<Self> {
         let layout = RenderDeferredEffectVertexLayout::new(decl)?;
+
+        let vertex_layout_stride = layout.stride;
+        let vertex_layout_position = layout.position;
+        let vertex_layout_normal = layout.normal;
+        let vertex_layout_tangent_0 = layout.tangent_0;
+        let vertex_layout_tangent_1 = layout.tangent_1;
+        let vertex_layout_color = layout.color;
+        let vertex_layout_tex_coords_0 = layout.tex_coords_0;
+        let vertex_layout_tex_coords_1 = layout.tex_coords_1;
 
         println!("\n\n");
         dbg!(effect, decl);
@@ -141,7 +151,7 @@ impl RenderDeferredEffectUniform {
             0
         };
 
-        let mut has_material_1 = 0;
+        let mut m1_enabled = 0;
         let mut m1_diffuse_color_r = 0.0;
         let mut m1_diffuse_color_g = 0.0;
         let mut m1_diffuse_color_b = 0.0;
@@ -149,7 +159,7 @@ impl RenderDeferredEffectUniform {
         let mut m1_alpha_mask_enabled = 0;
 
         if let Some(material_1) = &effect.material_1 {
-            has_material_1 = 1;
+            m1_enabled = 1;
             m1_diffuse_color_r = material_1.diffuse_color.r;
             m1_diffuse_color_g = material_1.diffuse_color.g;
             m1_diffuse_color_b = material_1.diffuse_color.b;
@@ -161,44 +171,36 @@ impl RenderDeferredEffectUniform {
             m1_alpha_mask_enabled = if material_1.alpha_mask_enabled { 1 } else { 0 };
         }
 
+        if effect.material_0.diffuse_texture.contains("stoneedge01_0")
+            && m1_diffuse_texture_alpha_enabled == 0
+        {
+            println!("break");
+        }
+
         Ok(RenderDeferredEffectUniform {
-            vertex_layout: layout,
+            vertex_layout_stride,
+            vertex_layout_position,
+            vertex_layout_normal,
+            vertex_layout_tangent_0,
+            vertex_layout_tangent_1,
+            vertex_layout_color,
+            vertex_layout_tex_coords_0,
+            vertex_layout_tex_coords_1,
+
             vertex_color_enabled,
             m0_diffuse_color_r,
             m0_diffuse_color_g,
             m0_diffuse_color_b,
+            m0_diffuse_texture_enabled: 1, // TODO
             m0_diffuse_texture_alpha_enabled,
             m0_alpha_mask_enabled,
-            has_material_1,
+            m1_enabled,
             m1_diffuse_color_r,
             m1_diffuse_color_g,
             m1_diffuse_color_b,
+            m1_diffuse_texture_enabled: 1, // TODO
             m1_diffuse_texture_alpha_enabled,
             m1_alpha_mask_enabled,
-            // vertex_layout: layout,
-            // diffuse_color_0_r: effect.material_0.diffuse_color.r,
-            // diffuse_color_0_g: effect.material_0.diffuse_color.g,
-            // diffuse_color_0_b: effect.material_0.diffuse_color.b,
-            // vertex_color_enabled: if effect.vertex_color_enabled { 1 } else { 0 },
-            // has_material_1: if effect.material_1.is_some() { 1 } else { 0 },
-            // diffuse_texture_0_alpha_enabled: if effect.material_0.diffuse_texture_alpha_disabled {
-            //     0
-            // } else {
-            //     1
-            // },
-            // diffuse_texture_1_alpha_enabled: if let Some(material_1) = &effect.material_1
-            //     && material_1.diffuse_texture_alpha_disabled
-            // {
-            //     0
-            // } else {
-            //     1
-            // },
-            // m0_alpha_mask_enabled: if effect.material_0.alpha_mask_enabled {
-            //     1
-            // } else {
-            //     0
-            // },
-            // m0_alpha_mask_enabled: if let Some(material)
         })
     }
 }

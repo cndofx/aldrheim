@@ -22,7 +22,9 @@ struct EffectUniform {
     vertex_layout_tex_coords_0: i32,
     vertex_layout_tex_coords_1: i32,
 
+    sharpness: f32,
     vertex_color_enabled: i32,
+
     m0_diffuse_color_r: f32,
     m0_diffuse_color_g: f32,
     m0_diffuse_color_b: f32,
@@ -105,8 +107,7 @@ var texture_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    const in_sharpness = 1.0; // TODO: this value should be passed as a uniform, but what should it be set to?
-    var sharpness = in_sharpness + 1;
+    var sharpness = effect.sharpness + 1;
     var half_sharpness = sharpness * 0.5;
 
     var diffuse_0 = vec4<f32>(1.0);

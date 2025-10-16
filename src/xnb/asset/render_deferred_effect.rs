@@ -103,7 +103,9 @@ pub struct RenderDeferredEffectUniform {
     pub vertex_layout_tex_coords_0: i32,
     pub vertex_layout_tex_coords_1: i32,
 
+    pub sharpness: f32,
     pub vertex_color_enabled: i32,
+
     pub m0_diffuse_color_r: f32,
     pub m0_diffuse_color_g: f32,
     pub m0_diffuse_color_b: f32,
@@ -135,6 +137,7 @@ impl RenderDeferredEffectUniform {
         println!("\n\n");
         dbg!(effect, decl);
 
+        let sharpness = effect.sharpness;
         let vertex_color_enabled = if effect.vertex_color_enabled { 1 } else { 0 };
 
         let m0_diffuse_color_r = effect.material_0.diffuse_color.r;
@@ -171,12 +174,6 @@ impl RenderDeferredEffectUniform {
             m1_alpha_mask_enabled = if material_1.alpha_mask_enabled { 1 } else { 0 };
         }
 
-        if effect.material_0.diffuse_texture.contains("stoneedge01_0")
-            && m1_diffuse_texture_alpha_enabled == 0
-        {
-            println!("break");
-        }
-
         Ok(RenderDeferredEffectUniform {
             vertex_layout_stride,
             vertex_layout_position,
@@ -187,7 +184,9 @@ impl RenderDeferredEffectUniform {
             vertex_layout_tex_coords_0,
             vertex_layout_tex_coords_1,
 
+            sharpness,
             vertex_color_enabled,
+
             m0_diffuse_color_r,
             m0_diffuse_color_g,
             m0_diffuse_color_b,

@@ -121,6 +121,14 @@ pub enum PixelFormat {
 
 impl PixelFormat {
     pub fn to_wgpu(self) -> wgpu::TextureFormat {
+        // TODO: i do not understand color spaces at all, but i'm pretty sure
+        // color data is stored as SRGB, and other data like normals or "SPG" maps
+        // are likely linear. this information is not stored in the XNB, so the gpu
+        // format would have to be determined with additional info about what this
+        // texture will be used for. this might complicate the asset loader, but unless
+        // magicka devs were insane and sometimes used a single texture in both linear
+        // and srgb contexts, i can probably just get away with an assert on the expected
+        // format when loading a cached texture
         match self {
             PixelFormat::Color => wgpu::TextureFormat::Bgra8UnormSrgb,
             PixelFormat::Bc1 => wgpu::TextureFormat::Bc1RgbaUnormSrgb,

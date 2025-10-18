@@ -9,12 +9,9 @@ use anyhow::Context;
 use glam::Mat4;
 
 use crate::{
-    renderer::Renderer,
+    renderer::{Renderer, effect::render_deferred_effect::RenderDeferredEffectUniform},
     scene::{self, SceneNode, SceneNodeKind},
-    xnb::{
-        BiTreeNode, Xnb, XnbContent,
-        asset::{XnbAsset, render_deferred_effect::RenderDeferredEffectUniform},
-    },
+    xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
 
 pub struct AssetManager {
@@ -307,6 +304,7 @@ fn load_level_model_bitree_node_recursive(
             tree: bitree_asset.clone(),
             start_index: bitree_node.start_index as u32,
             index_count: bitree_node.primitive_count as u32 * 3,
+            bounding_box: bitree_node.bounding_box.clone(),
         }),
     };
 

@@ -4,7 +4,8 @@ use glam::{Mat4, Vec3};
 
 use crate::{
     asset_manager::{BiTreeAsset, ModelAsset},
-    renderer::{ModelDrawCommand, Renderable},
+    renderer::{ModelDrawCommand, Renderable, RenderableBounds, camera::Camera},
+    xnb::asset::model::BoundingBox,
 };
 
 pub struct Scene {
@@ -73,12 +74,14 @@ impl SceneNode {
         match &self.kind {
             SceneNodeKind::Model(model_node) => draw_commands.push(ModelDrawCommand {
                 renderable: Renderable::Model(model_node.clone()),
+                bounds: None, // TODO
                 transform: current_transform,
             }),
             // TODO: it seems like bitree parent nodes draw all of the same mesh as their child nodes combined?
             // should i render just the parent nodes or just the leaf child nodes?
             SceneNodeKind::BiTree(bitree_node) => draw_commands.push(ModelDrawCommand {
                 renderable: Renderable::BiTreeNode(bitree_node.clone()),
+                bounds: Some(RenderableBounds::Box(bitree_node.bounding_box.clone())),
                 transform: current_transform,
             }),
             _ => {}
@@ -108,38 +111,5 @@ pub struct BiTreeNode {
     pub tree: Rc<BiTreeAsset>,
     pub start_index: u32,
     pub index_count: u32,
-}
-
-#[derive(Debug)]
-pub struct Camera {
-    pub position: Vec3,
-    pub pitch_radians: f32,
-    pub yaw_radians: f32,
-    pub fov_y_radians: f32,
-    pub z_near: f32,
-    pub z_far: f32,
-}
-
-impl Camera {
-    pub const UP: Vec3 = Vec3::Y;
-
-    pub fn look_at(&mut self, target: Vec3) {
-        let forward = (target - self.position).normalize();
-        self.yaw_radians = forward.x.atan2(forward.z);
-        self.pitch_radians = forward.y.asin();
-    }
-
-    pub fn forward_right_up(&self) -> (Vec3, Vec3, Vec3) {
-        let up = Self::UP;
-        let forward_x = self.yaw_radians.sin() * self.pitch_radians.cos();
-        let forward_y = self.pitch_radians.sin();
-        let forward_z = self.yaw_radians.cos() * self.pitch_radians.cos();
-        let forward = Vec3::new(forward_x, forward_y, forward_z).normalize();
-        let right = forward.cross(up);
-        (forward, right, up)
-    }
-
-    pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_to_rh(self.position, self.forward_right_up().0, Self::UP)
-    }
+    pub bounding_box: BoundingBox,
 }

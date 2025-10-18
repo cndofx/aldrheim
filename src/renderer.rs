@@ -1,4 +1,4 @@
-use std::{rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc, time::Instant};
 
 use glam::Mat4;
 use wgpu::util::DeviceExt;
@@ -6,9 +6,19 @@ use winit::window::Window;
 
 use crate::{
     asset_manager::{BiTreeAsset, ModelAsset, Texture2DAsset},
-    scene::{self, Camera},
-    xnb::{self, asset::render_deferred_effect::RenderDeferredEffectUniform},
+    renderer::{
+        camera::{Camera, Frustum},
+        effect::render_deferred_effect::RenderDeferredEffectUniform,
+    },
+    scene,
+    xnb::{
+        self,
+        asset::model::{BoundingBox, BoundingSphere},
+    },
 };
+
+pub mod camera;
+pub mod effect;
 
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
@@ -180,8 +190,23 @@ impl Renderer {
             camera.z_near,
             camera.z_far,
         );
-
         let view = camera.view_matrix();
+        let view_proj = projection * view;
+
+        let pre_cull_draw_count = draw_commands.len();
+        let frustum = Frustum::new(view_proj);
+        let culled_draw_commands = draw_commands.iter().filter(|draw| {
+            let Some(bounds) = &draw.bounds else {
+                return true;
+            };
+
+            // TODO: transform bounds from local space to world space
+
+            match bounds {
+                RenderableBounds::Box(bounding_box) => frustum.test_aabb(bounding_box),
+                RenderableBounds::Sphere(bounding_sphere) => frustum.test_sphere(bounding_sphere),
+            }
+        });
 
         let surface_texture = self.surface.get_current_texture()?;
         let surface_view = surface_texture
@@ -225,8 +250,9 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-            // let mut draw_calls = 0;
-            for draw in draw_commands {
+            let mut draw_count = 0;
+            for draw in culled_draw_commands {
+                draw_count += 1;
                 // TODO: this assumes that all pipelines use the same bind groups and does no sorting or batching
 
                 // render_pass.set_pipeline(&draw.model.pipeline);
@@ -249,7 +275,7 @@ impl Renderer {
                 //     0..1,
                 // );
 
-                let mvp = projection * view * draw.transform;
+                let mvp = view_proj * draw.transform;
 
                 match &draw.renderable {
                     Renderable::Model(model) => todo!(),
@@ -281,11 +307,11 @@ impl Renderer {
                             0,
                             0..1,
                         );
-                        // draw_calls += 1;
                     }
                 }
             }
-            // dbg!(draw_calls);
+
+            dbg!(pre_cull_draw_count, draw_count);
         }
 
         self.queue.submit([command_encoder.finish()]);
@@ -697,8 +723,14 @@ pub enum Renderable {
     BiTreeNode(scene::BiTreeNode),
 }
 
+pub enum RenderableBounds {
+    Box(BoundingBox),
+    Sphere(BoundingSphere),
+}
+
 pub struct ModelDrawCommand {
     pub renderable: Renderable,
+    pub bounds: Option<RenderableBounds>,
     pub transform: Mat4,
 }
 

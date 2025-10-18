@@ -197,7 +197,7 @@ impl MeshPart {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BoundingSphere {
     pub center: Vec3,
     pub radius: f32,
@@ -211,7 +211,7 @@ impl BoundingSphere {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BoundingBox {
     pub min: Vec3,
     pub max: Vec3,

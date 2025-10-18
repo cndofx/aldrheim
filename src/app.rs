@@ -247,10 +247,10 @@ struct InputState {
 
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
     let level = asset_manager.load_level_model(
-        Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
+        // Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
         // Path::new("Content/Levels/Challenges/ch_grimlab_build.xnb"),
         // Path::new("Content/Levels/Highlands/hl_s1.xnb"),
-        // Path::new("Content/Levels/WizardCastle/wc_s4.xnb"),
+        Path::new("Content/Levels/WizardCastle/wc_s4.xnb"),
         None,
         renderer,
     )?;

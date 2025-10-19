@@ -4,7 +4,11 @@ use glam::{Mat4, Vec3};
 
 use crate::{
     asset_manager::{BiTreeAsset, ModelAsset},
-    renderer::{ModelDrawCommand, Renderable, RenderableBounds, camera::Camera},
+    renderer::{
+        ModelDrawCommand, Renderable, RenderableBounds, camera::Camera,
+        pipelines::debug_point::DebugPoints,
+    },
+    scene::vfx::VisualEffect,
     xnb::asset::model::BoundingBox,
 };
 
@@ -15,6 +19,7 @@ pub mod vfx;
 pub struct Scene {
     pub root_node: SceneNode,
     pub camera: Camera,
+    pub temp_debug_points: Option<DebugPoints>,
 }
 
 impl Scene {
@@ -35,6 +40,7 @@ impl Scene {
                 z_near: 0.1,
                 z_far: 10000.0,
             },
+            temp_debug_points: None,
         }
     }
 
@@ -48,6 +54,14 @@ impl Scene {
         transform_stack.push(Mat4::IDENTITY);
         self.root_node
             .render(&mut draw_commands, &mut transform_stack);
+
+        if let Some(debug_points) = &self.temp_debug_points {
+            draw_commands.push(ModelDrawCommand {
+                renderable: Renderable::DebugPoints(debug_points.clone()),
+                bounds: None,
+                transform: Mat4::IDENTITY,
+            });
+        }
 
         draw_commands
     }
@@ -103,6 +117,7 @@ pub enum SceneNodeKind {
     Empty,
     Model(ModelNode),
     BiTree(BiTreeNode),
+    VisualEffect(VisualEffectNode),
 }
 
 #[derive(Clone)]
@@ -116,4 +131,8 @@ pub struct BiTreeNode {
     pub start_index: u32,
     pub index_count: u32,
     pub bounding_box: BoundingBox,
+}
+
+pub struct VisualEffectNode {
+    pub effect: Rc<VisualEffect>,
 }

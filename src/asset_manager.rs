@@ -6,11 +6,11 @@ use std::{
 };
 
 use anyhow::Context;
-use glam::Mat4;
+use glam::{Mat4, Quat, Vec3};
 
 use crate::{
-    renderer::{Renderer, effect::render_deferred_effect::RenderDeferredEffectUniform},
-    scene::{self, SceneNode, SceneNodeKind, vfx::VisualEffect},
+    renderer::{Renderer, pipelines::render_deferred_effect::RenderDeferredEffectUniform},
+    scene::{self, SceneNode, SceneNodeKind, VisualEffectNode, vfx::VisualEffect},
     xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
 
@@ -185,6 +185,23 @@ impl AssetManager {
             let asset =
                 renderer.load_bitree(tree, diffuse_texture_0, diffuse_texture_1, effect_uniform)?;
             load_level_model_bitree_node_recursive(&mut scene_node, &tree.node, Rc::new(asset))?;
+        }
+
+        for effect_storage in &level_model.effect_storages {
+            let effect = self.load_visual_effect(&effect_storage.effect)?;
+
+            let effect_node = SceneNode {
+                name: effect_storage.name.clone(),
+                visible: true,
+                transform: Mat4::from_rotation_translation(
+                    Quat::look_to_rh(effect_storage.forward, Vec3::Y),
+                    effect_storage.position,
+                ),
+                children: Vec::new(),
+                kind: SceneNodeKind::VisualEffect(VisualEffectNode { effect }),
+            };
+
+            scene_node.children.push(effect_node);
         }
 
         log::debug!("loaded LevelModel from file {}", path.display());

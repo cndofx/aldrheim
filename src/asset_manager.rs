@@ -35,13 +35,20 @@ impl AssetManager {
         }
     }
 
+    pub fn read_to_string(&self, path: &Path, base: Option<&Path>) -> anyhow::Result<String> {
+        let path = self.resolve_path(path, base, None)?;
+        let string = std::fs::read_to_string(&path)?;
+        log::debug!("loaded string data from file {}", path.display());
+        Ok(string)
+    }
+
     pub fn load_texture_2d(
         &mut self,
         path: &Path,
         base: Option<&Path>,
         renderer: &Renderer,
     ) -> anyhow::Result<Rc<Texture2DAsset>> {
-        let path = self.resolve_xnb_path(path.as_ref(), base.as_ref().map(|v| v.as_ref()))?;
+        let path = self.resolve_path(path, base, Some("xnb"))?;
         if let Some(texture) = self.textures_2d.get(&path) {
             return Ok(texture.clone());
         }
@@ -67,7 +74,7 @@ impl AssetManager {
         base: Option<&Path>,
         renderer: &Renderer,
     ) -> anyhow::Result<Rc<ModelAsset>> {
-        let path = self.resolve_xnb_path(path.as_ref(), base.as_ref().map(|v| v.as_ref()))?;
+        let path = self.resolve_path(path, base, Some("xnb"))?;
         if let Some(model) = self.models.get(&path) {
             return Ok(model.clone());
         }
@@ -105,7 +112,7 @@ impl AssetManager {
         base: Option<&Path>,
         renderer: &Renderer,
     ) -> anyhow::Result<SceneNode> {
-        let path = self.resolve_xnb_path(path.as_ref(), base.as_ref().map(|v| v.as_ref()))?;
+        let path = self.resolve_path(path, base, Some("xnb"))?;
 
         let model_content = self.load_xnb_content(&path)?;
         let XnbAsset::LevelModel(level_model) = &model_content.primary_asset else {
@@ -190,7 +197,12 @@ impl AssetManager {
     ///   - if `base` is `None`, the root Magicka installation directory is assumed.
     ///   - if `base` is a relative path, it is appended to the root Magicka installation directory.
     ///   - if `base` is a file path, the parent directory will be used.
-    fn resolve_xnb_path(&self, path: &Path, base: Option<&Path>) -> anyhow::Result<PathBuf> {
+    fn resolve_path(
+        &self,
+        path: &Path,
+        base: Option<&Path>,
+        ensure_extension: Option<&str>,
+    ) -> anyhow::Result<PathBuf> {
         // default to magicka install dir
         let mut base = base
             .map(|b| b.to_owned())
@@ -207,8 +219,10 @@ impl AssetManager {
         }
 
         // ensure path has an extension (relative paths stored inside XNBs dont have .xnb extensions)
-        let path = if path.extension().is_none() {
-            path.with_extension("xnb")
+        let path = if let Some(extension) = ensure_extension
+            && path.extension().is_none()
+        {
+            path.with_extension(extension)
         } else {
             path.to_owned()
         };

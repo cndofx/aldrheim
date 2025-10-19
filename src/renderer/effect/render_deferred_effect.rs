@@ -46,8 +46,8 @@ impl RenderDeferredEffectUniform {
         let vertex_layout_tex_coords_0 = layout.tex_coords_0;
         let vertex_layout_tex_coords_1 = layout.tex_coords_1;
 
-        println!("\n\n");
-        dbg!(effect, decl);
+        // println!("\n\n");
+        // dbg!(effect, decl);
 
         let sharpness = effect.sharpness;
         let vertex_color_enabled = if effect.vertex_color_enabled { 1 } else { 0 };

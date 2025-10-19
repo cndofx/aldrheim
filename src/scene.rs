@@ -8,6 +8,8 @@ use crate::{
     xnb::asset::model::BoundingBox,
 };
 
+pub mod level;
+
 pub struct Scene {
     pub root_node: SceneNode,
     pub camera: Camera,

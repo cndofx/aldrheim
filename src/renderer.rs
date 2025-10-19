@@ -193,7 +193,7 @@ impl Renderer {
         let view = camera.view_matrix();
         let view_proj = projection * view;
 
-        let pre_cull_draw_count = draw_commands.len();
+        // let pre_cull_draw_count = draw_commands.len();
         let frustum = Frustum::new(view_proj);
         let culled_draw_commands = draw_commands.iter().filter(|draw| {
             let Some(bounds) = &draw.bounds else {
@@ -250,9 +250,9 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-            let mut draw_count = 0;
+            // let mut draw_count = 0;
             for draw in culled_draw_commands {
-                draw_count += 1;
+                // draw_count += 1;
                 // TODO: this assumes that all pipelines use the same bind groups and does no sorting or batching
 
                 // render_pass.set_pipeline(&draw.model.pipeline);
@@ -311,7 +311,7 @@ impl Renderer {
                 }
             }
 
-            dbg!(pre_cull_draw_count, draw_count);
+            // dbg!(pre_cull_draw_count, draw_count);
         }
 
         self.queue.submit([command_encoder.finish()]);

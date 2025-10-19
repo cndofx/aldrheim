@@ -37,7 +37,7 @@ pub struct App {
 
 impl App {
     pub fn new(magicka_path: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        let asset_manager = AssetManager::new(magicka_path);
+        let asset_manager = AssetManager::new(magicka_path)?;
 
         let app = App {
             asset_manager,
@@ -246,14 +246,15 @@ struct InputState {
 // - ch_volcano_hideout.xnb (needs LavaEffect)
 
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
-    let scene_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
+    // let scene_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
+    let level_path = Path::new("Content/Levels/Challenges/chs_havindr_arena.xml");
 
-    let scene_spec_xml = asset_manager.read_to_string(scene_path, None)?;
-    let scene_spec = Level::read_xml(&scene_spec_xml)?;
-    dbg!(&scene_spec);
+    let level_xml = asset_manager.read_to_string(level_path, None)?;
+    let level = Level::read_xml(&level_xml)?;
+    dbg!(&level);
 
     let scene_model_node =
-        asset_manager.load_level_model(Path::new(&scene_spec.model), Some(scene_path), renderer)?;
+        asset_manager.load_level_model(Path::new(&level.model), Some(level_path), renderer)?;
 
     // let level = asset_manager.load_level_model(
     //     // Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),

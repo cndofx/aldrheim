@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub mod level;
+pub mod vfx;
 
 pub struct Scene {
     pub root_node: SceneNode,

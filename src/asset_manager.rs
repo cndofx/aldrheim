@@ -10,7 +10,7 @@ use glam::Mat4;
 
 use crate::{
     renderer::{Renderer, effect::render_deferred_effect::RenderDeferredEffectUniform},
-    scene::{self, SceneNode, SceneNodeKind},
+    scene::{self, SceneNode, SceneNodeKind, vfx::VisualEffect},
     xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
 
@@ -24,15 +24,27 @@ pub struct AssetManager {
     // and all unneeded meshes are dropped during that same loading screen
     textures_2d: HashMap<PathBuf, Rc<Texture2DAsset>>,
     models: HashMap<PathBuf, Rc<ModelAsset>>,
+
+    // visual effects are keyed by filename strings instead of full paths
+    // because they are referenced by filename (unique, without extension)
+    // in other data such as levels, rather than by path like other assets
+    //
+    // they are also preloaded up front as they can located in arbitrary subdirectories,
+    // so locating the file would require a recursive search of the entire Content/Effect directory
+    visual_effects: HashMap<String, Rc<VisualEffect>>,
 }
 
 impl AssetManager {
-    pub fn new(magicka_path: impl Into<PathBuf>) -> Self {
-        AssetManager {
-            magicka_path: magicka_path.into(),
+    pub fn new(magicka_path: impl Into<PathBuf>) -> anyhow::Result<Self> {
+        let magicka_path = magicka_path.into();
+        let visual_effects = preload_visual_effects(&magicka_path)?;
+
+        Ok(AssetManager {
+            magicka_path,
+            visual_effects,
             textures_2d: HashMap::new(),
             models: HashMap::new(),
-        }
+        })
     }
 
     pub fn read_to_string(&self, path: &Path, base: Option<&Path>) -> anyhow::Result<String> {
@@ -178,6 +190,14 @@ impl AssetManager {
         log::debug!("loaded LevelModel from file {}", path.display());
 
         Ok(scene_node)
+    }
+
+    pub fn load_visual_effect(&self, name: &str) -> anyhow::Result<Rc<VisualEffect>> {
+        if let Some(effect) = self.visual_effects.get(name) {
+            return Ok(effect.clone());
+        } else {
+            anyhow::bail!("visual effect '{name}' not found");
+        }
     }
 
     fn load_xnb_content(&self, path: &Path) -> anyhow::Result<XnbContent> {
@@ -334,4 +354,52 @@ fn load_level_model_bitree_node_recursive(
 fn fix_xnb_path(path: &str) -> PathBuf {
     let path = path.replace('\\', "/");
     PathBuf::from(path)
+}
+
+fn preload_visual_effects(base: &Path) -> anyhow::Result<HashMap<String, Rc<VisualEffect>>> {
+    let path = base.join("Content/Effects");
+    let mut map = HashMap::new();
+
+    preload_visual_effects_inner(&path, &mut map)?;
+
+    Ok(map)
+}
+
+fn preload_visual_effects_inner(
+    path: &Path,
+    map: &mut HashMap<String, Rc<VisualEffect>>,
+) -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(&path)? {
+        // cursed closure to allow catching all errors at once
+        // if one file failes to load, it will be logged and traversal will continue
+        if let Err(e) = (|| -> anyhow::Result<()> {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let path = entry.path();
+
+            if metadata.is_file() {
+                let xml_string = std::fs::read_to_string(&path)?;
+                let effect = VisualEffect::read_xml(&xml_string).with_context(|| {
+                    format!("failed to read visual effect at path {}", path.display())
+                })?;
+                let name = path
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_ascii_lowercase();
+                map.insert(name, Rc::new(effect));
+            } else if metadata.is_dir() {
+                preload_visual_effects_inner(&path, map)?;
+            } else {
+                unreachable!("vfx entry is not a file or a directory");
+            }
+
+            Ok(())
+        })() {
+            log::error!("{e}");
+        }
+    }
+
+    Ok(())
 }

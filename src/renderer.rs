@@ -1,4 +1,4 @@
-use std::{rc::Rc, sync::Arc, time::Instant};
+use std::{rc::Rc, sync::Arc};
 
 use glam::Mat4;
 use wgpu::util::DeviceExt;
@@ -8,7 +8,9 @@ use crate::{
     asset_manager::{BiTreeAsset, ModelAsset, Texture2DAsset},
     renderer::{
         camera::{Camera, Frustum},
-        effect::render_deferred_effect::RenderDeferredEffectUniform,
+        effect::render_deferred_effect::{
+            RenderDeferredEffectPipeline, RenderDeferredEffectUniform,
+        },
     },
     scene,
     xnb::{
@@ -70,14 +72,12 @@ impl Renderer {
             .await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
-        dbg!(&surface_caps);
         let surface_format = surface_caps
             .formats
             .iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
-        dbg!(surface_format);
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -574,146 +574,6 @@ impl Renderer {
         Ok(Texture2DAsset {
             texture: wgpu_texture,
             view,
-        })
-    }
-}
-
-pub struct RenderDeferredEffectPipeline {
-    vertex_buffer_bind_group_layout: wgpu::BindGroupLayout,
-    vertex_layout_uniform_bind_group_layout: wgpu::BindGroupLayout,
-    texture_bind_group_layout: wgpu::BindGroupLayout,
-    pipeline: wgpu::RenderPipeline,
-}
-
-impl RenderDeferredEffectPipeline {
-    pub fn new(
-        device: &wgpu::Device,
-        surface_config: &wgpu::SurfaceConfiguration,
-    ) -> anyhow::Result<Self> {
-        let vertex_buffer_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Render Deferred Effect Vertex Buffer Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let effect_properties_uniform_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Render Deferred Effect Properties Uniform Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Render Deferred Effect Texture Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
-        let shader =
-            device.create_shader_module(wgpu::include_wgsl!("shaders/render_deferred_effect.wgsl"));
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[
-                &vertex_buffer_bind_group_layout,
-                &effect_properties_uniform_bind_group_layout,
-                &texture_bind_group_layout,
-            ],
-            push_constant_ranges: &[wgpu::PushConstantRange {
-                stages: wgpu::ShaderStages::VERTEX,
-                range: 0..(size_of::<Mat4>() as u32), // mvp matrix
-            }],
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::all(),
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Cw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        Ok(RenderDeferredEffectPipeline {
-            vertex_buffer_bind_group_layout,
-            vertex_layout_uniform_bind_group_layout: effect_properties_uniform_bind_group_layout,
-            texture_bind_group_layout,
-            pipeline,
         })
     }
 }

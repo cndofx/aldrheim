@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub mod level;
+pub mod trigger;
 pub mod vfx;
 
 pub struct Scene {

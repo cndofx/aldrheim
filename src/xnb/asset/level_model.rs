@@ -59,7 +59,6 @@ impl LevelModel {
             let effect = EffectStorage::read(reader)?;
             effect_storages.push(effect);
         }
-        dbg!(&effect_storages);
 
         let num_physics_entity_storages = reader.read_i32::<LittleEndian>()?;
         let mut physics_entity_storages = Vec::with_capacity(num_physics_entity_storages as usize);

@@ -1,12 +1,10 @@
 use std::{
-    f32::consts::TAU,
     path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
 };
 
-use glam::{Mat4, Quat, Vec3};
-use rand::Rng;
+use glam::Vec3;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent},
@@ -18,11 +16,7 @@ use winit::{
 #[cfg(target_os = "linux")]
 use winit::platform::wayland::WindowAttributesExtWayland;
 
-use crate::{
-    asset_manager::AssetManager,
-    renderer::Renderer,
-    scene::{ModelNode, Scene, SceneNode, SceneNodeKind, level::Level},
-};
+use crate::{asset_manager::AssetManager, renderer::Renderer, scene::Scene};
 
 pub struct App {
     asset_manager: AssetManager,
@@ -246,27 +240,10 @@ struct InputState {
 // - ch_volcano_hideout.xnb (needs LavaEffect)
 
 fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
-    // let scene_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
-    let level_path = Path::new("Content/Levels/Challenges/chs_havindr_arena.xml");
+    let level_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
+    // let level_path = Path::new("Content/Levels/Challenges/chs_havindr_arena.xml");
 
-    let level_xml = asset_manager.read_to_string(level_path, None)?;
-    let level = Level::read_xml(&level_xml)?;
-    dbg!(&level);
-
-    let scene_model_node =
-        asset_manager.load_level_model(Path::new(&level.model), Some(level_path), renderer)?;
-
-    // let level = asset_manager.load_level_model(
-    //     // Path::new("Content/Levels/Challenges/ch_havindr_arena.xnb"),
-    //     // Path::new("Content/Levels/Challenges/ch_grimlab_build.xnb"),
-    //     // Path::new("Content/Levels/Highlands/hl_s1.xnb"),
-    //     Path::new("Content/Levels/WizardCastle/wc_s4.xnb"),
-    //     None,
-    //     renderer,
-    // )?;
-
-    let mut scene = Scene::new();
-    scene.root_node.children.push(scene_model_node);
+    let scene = Scene::load_level(level_path, None, asset_manager, renderer)?;
 
     Ok(scene)
 }

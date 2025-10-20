@@ -251,7 +251,7 @@ fn random_direction_in_arc(
         + (vertical_angle_radians_min + vertical_angle_radians_max))
         * 0.5;
 
-    let x = h_angle.sin();
+    let x = h_angle.sin() * v_angle.cos();
     let y = v_angle.sin();
     let z = (h_angle.cos() * -1.0) * v_angle.cos();
 

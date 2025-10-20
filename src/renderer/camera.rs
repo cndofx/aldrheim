@@ -31,9 +31,9 @@ impl Camera {
         (forward, right, up)
     }
 
-    pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_to_rh(self.position, self.forward_right_up().0, Self::UP)
-    }
+    // pub fn view_matrix(&self) -> Mat4 {
+    //     Mat4::look_to_rh(self.position, self.forward_right_up().0, Self::UP)
+    // }
 }
 
 pub struct Frustum {

@@ -16,6 +16,7 @@ impl RenderDeferredEffectPipeline {
     pub fn new(
         device: &wgpu::Device,
         surface_config: &wgpu::SurfaceConfiguration,
+        camera_uniform_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> anyhow::Result<Self> {
         let vertex_buffer_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -87,6 +88,7 @@ impl RenderDeferredEffectPipeline {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
+                &camera_uniform_bind_group_layout,
                 &vertex_buffer_bind_group_layout,
                 &effect_properties_uniform_bind_group_layout,
                 &texture_bind_group_layout,

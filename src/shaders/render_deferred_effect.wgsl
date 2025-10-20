@@ -6,10 +6,11 @@ struct VertexOutput {
     @location(3) tex_coords_1: vec2<f32>,
 };
 
-struct MvpUniform {
-    model: mat4x4<f32>,
-    view: mat4x4<f32>,
-    projection: mat4x4<f32>,
+struct CameraUniform {
+    view_proj: mat4x4<f32>,
+    forward: vec4<f32>,
+    right: vec4<f32>,
+    up: vec4<f32>,
 };
 
 struct EffectUniform {
@@ -38,15 +39,18 @@ struct EffectUniform {
     m1_diffuse_texture_enabled: i32,
     m1_diffuse_texture_alpha_enabled: i32,
     m1_alpha_mask_enabled: i32, // always opposite of m0_alpha_mask_enabled? 
-}
+};
 
 @group(0) @binding(0)
-var<storage, read> vertex_buffer: array<u32>;
+var <uniform> camera: CameraUniform;
 
 @group(1) @binding(0)
+var<storage, read> vertex_buffer: array<u32>;
+
+@group(2) @binding(0)
 var<uniform> effect: EffectUniform;
 
-var<push_constant> mvp: mat4x4<f32>;
+var<push_constant> model: mat4x4<f32>;
 
 fn read_vec4(byte_offset: u32) -> vec4<f32> {
     var offset = byte_offset / 4;
@@ -89,7 +93,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     }
 
     var out: VertexOutput;
-    out.clip_position = mvp * vec4<f32>(position, 1.0);
+    out.clip_position = camera.view_proj * model * vec4<f32>(position, 1.0);
     out.normal = normal;
     out.vertex_color = vertex_color;
     out.tex_coords_0 = tex_coords_0;
@@ -98,11 +102,11 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return out;
 }
 
-@group(2) @binding(0)
+@group(3) @binding(0)
 var diffuse_texture_0: texture_2d<f32>;
-@group(2) @binding(1)
+@group(3) @binding(1)
 var diffuse_texture_1: texture_2d<f32>;
-@group(2) @binding(2)
+@group(3) @binding(2)
 var texture_sampler: sampler;
 
 @fragment

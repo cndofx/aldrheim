@@ -8,13 +8,14 @@ impl ParticlesPipeline {
     pub fn new(
         device: &wgpu::Device,
         surface_config: &wgpu::SurfaceConfiguration,
+        camera_uniform_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> anyhow::Result<Self> {
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../../shaders/particles.wgsl"));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&camera_uniform_bind_group_layout],
             push_constant_ranges: &[wgpu::PushConstantRange {
                 stages: wgpu::ShaderStages::VERTEX,
                 range: 0..(size_of::<Mat4>() as u32), // mvp matrix

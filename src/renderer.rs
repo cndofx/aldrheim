@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc};
 
 use glam::Mat4;
 use wgpu::util::DeviceExt;
@@ -29,15 +29,19 @@ pub struct Renderer {
     is_surface_configured: bool,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
+    pub window: Arc<Window>,
+
+    camera_uniform_buffer: wgpu::Buffer,
+    camera_uniform_bind_group: wgpu::BindGroup,
+
     depth_texture: wgpu::Texture,
     placeholder_texture: wgpu::Texture,
     placeholder_texture_view: wgpu::TextureView,
-    pub window: Arc<Window>,
+
+    linear_sampler: wgpu::Sampler,
 
     particles_pipeline: ParticlesPipeline,
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
-
-    linear_sampler: wgpu::Sampler,
 }
 
 impl Renderer {
@@ -92,9 +96,42 @@ impl Renderer {
             view_formats: Vec::new(),
         };
 
-        let particles_pipeline = ParticlesPipeline::new(&device, &surface_config)?;
-        let render_deferred_effect_pipeline =
-            RenderDeferredEffectPipeline::new(&device, &surface_config)?;
+        let camera_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Camera Uniform Buffer"),
+            size: std::mem::size_of::<CameraUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let camera_uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let camera_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Camera Uniform Bind Group"),
+            layout: &camera_uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        let particles_pipeline =
+            ParticlesPipeline::new(&device, &surface_config, &camera_uniform_bind_group_layout)?;
+        let render_deferred_effect_pipeline = RenderDeferredEffectPipeline::new(
+            &device,
+            &surface_config,
+            &camera_uniform_bind_group_layout,
+        )?;
 
         let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
@@ -150,12 +187,17 @@ impl Renderer {
             device,
             queue,
             window,
+
+            camera_uniform_buffer,
+            camera_uniform_bind_group,
+
+            linear_sampler,
             depth_texture,
             placeholder_texture,
             placeholder_texture_view,
+
             particles_pipeline,
             render_deferred_effect_pipeline,
-            linear_sampler,
         };
         Ok(renderer)
     }
@@ -195,8 +237,22 @@ impl Renderer {
             camera.z_near,
             camera.z_far,
         );
-        let view = camera.view_matrix();
+
+        let (camera_forward, camera_right, camera_up) = camera.forward_right_up();
+        let view = Mat4::look_to_rh(camera.position, camera_forward, camera_up);
         let view_proj = projection * view;
+
+        let camera_uniform = CameraUniform {
+            view_proj: view_proj.to_cols_array_2d(),
+            forward: [camera_forward.x, camera_forward.y, camera_forward.z, 1.0],
+            right: [camera_right.x, camera_right.y, camera_right.z, 1.0],
+            up: [camera_up.x, camera_up.y, camera_up.z, 1.0],
+        };
+        self.queue.write_buffer(
+            &self.camera_uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[camera_uniform]),
+        );
 
         // let pre_cull_draw_count = draw_commands.len();
         let frustum = Frustum::new(view_proj);
@@ -285,27 +341,26 @@ impl Renderer {
                 //     0..1,
                 // );
 
-                let mvp = view_proj * draw.transform;
-
                 match &draw.renderable {
                     Renderable::Model(model) => todo!(),
                     Renderable::BiTreeNode(bitree_node) => {
                         render_pass.set_pipeline(&self.render_deferred_effect_pipeline.pipeline);
+                        render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
                         render_pass.set_bind_group(
-                            0,
+                            1,
                             &bitree_node.tree.vertex_buffer_bind_group,
                             &[],
                         );
                         render_pass.set_bind_group(
-                            1,
+                            2,
                             &bitree_node.tree.vertex_layout_uniform_bind_group,
                             &[],
                         );
-                        render_pass.set_bind_group(2, &bitree_node.tree.texture_bind_group, &[]);
+                        render_pass.set_bind_group(3, &bitree_node.tree.texture_bind_group, &[]);
                         render_pass.set_push_constants(
                             wgpu::ShaderStages::VERTEX,
                             0,
-                            bytemuck::cast_slice(&[mvp]),
+                            bytemuck::cast_slice(&[draw.transform]),
                         );
                         render_pass.set_index_buffer(
                             bitree_node.tree.index_buffer.slice(..),
@@ -320,11 +375,12 @@ impl Renderer {
                     }
                     Renderable::VisualEffect(vfx) => {
                         render_pass.set_pipeline(&self.particles_pipeline.pipeline);
+                        render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
                         render_pass.set_vertex_buffer(0, vfx.instance_buffer.slice(..));
                         render_pass.set_push_constants(
                             wgpu::ShaderStages::VERTEX,
                             0,
-                            bytemuck::cast_slice(&[mvp]),
+                            bytemuck::cast_slice(&[draw.transform]),
                         );
                         render_pass.draw(0..4, 0..vfx.instance_count);
                     }
@@ -596,6 +652,15 @@ impl Renderer {
             view,
         })
     }
+}
+
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
+pub struct CameraUniform {
+    pub view_proj: [[f32; 4]; 4],
+    pub forward: [f32; 4],
+    pub right: [f32; 4],
+    pub up: [f32; 4],
 }
 
 pub enum Renderable {

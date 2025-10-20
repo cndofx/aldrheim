@@ -190,8 +190,8 @@ impl ApplicationHandler for App {
                 self.update(dt);
 
                 let renderer = self.renderer.as_mut().unwrap();
-                let scene = self.scene.as_ref().unwrap();
-                let draws = scene.render();
+                let scene = self.scene.as_mut().unwrap();
+                let draws = scene.render(renderer);
                 match renderer.render(&draws, &scene.camera) {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {

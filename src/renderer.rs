@@ -10,10 +10,11 @@ use crate::{
         camera::{Camera, Frustum},
         pipelines::{
             debug_point::{DebugPoints, DebugPointsPipeline, DebugPointsVertex},
+            particles::ParticlesPipeline,
             render_deferred_effect::{RenderDeferredEffectPipeline, RenderDeferredEffectUniform},
         },
     },
-    scene,
+    scene::{self, vfx::VisualEffectNodeRenderable},
     xnb::{
         self,
         asset::model::{BoundingBox, BoundingSphere},
@@ -28,13 +29,14 @@ pub struct Renderer {
     surface_config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     pub device: wgpu::Device,
-    queue: wgpu::Queue,
+    pub queue: wgpu::Queue,
     depth_texture: wgpu::Texture,
     placeholder_texture: wgpu::Texture,
     placeholder_texture_view: wgpu::TextureView,
     pub window: Arc<Window>,
 
     debug_points_pipeline: DebugPointsPipeline,
+    particles_pipeline: ParticlesPipeline,
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
 
     linear_sampler: wgpu::Sampler,
@@ -94,6 +96,7 @@ impl Renderer {
         };
 
         let debug_points_pipeline = DebugPointsPipeline::new(&device, &surface_config)?;
+        let particles_pipeline = ParticlesPipeline::new(&device, &surface_config)?;
         let render_deferred_effect_pipeline =
             RenderDeferredEffectPipeline::new(&device, &surface_config)?;
 
@@ -155,6 +158,7 @@ impl Renderer {
             placeholder_texture,
             placeholder_texture_view,
             debug_points_pipeline,
+            particles_pipeline,
             render_deferred_effect_pipeline,
             linear_sampler,
         };
@@ -163,7 +167,7 @@ impl Renderer {
 
     pub fn render(
         &mut self,
-        draw_commands: &[ModelDrawCommand],
+        draw_commands: &[DrawCommand],
         camera: &Camera,
     ) -> Result<(), wgpu::SurfaceError> {
         // TODO: next required features
@@ -326,6 +330,16 @@ impl Renderer {
                             0,
                             0..1,
                         );
+                    }
+                    Renderable::VisualEffect(vfx) => {
+                        render_pass.set_pipeline(&self.particles_pipeline.pipeline);
+                        render_pass.set_vertex_buffer(0, vfx.instance_buffer.slice(..));
+                        render_pass.set_push_constants(
+                            wgpu::ShaderStages::VERTEX,
+                            0,
+                            bytemuck::cast_slice(&[mvp]),
+                        );
+                        render_pass.draw(0..4, 0..vfx.instance_count);
                     }
                     Renderable::DebugPoints(points) => {
                         render_pass.set_pipeline(&self.debug_points_pipeline.pipeline);
@@ -610,6 +624,7 @@ impl Renderer {
 pub enum Renderable {
     Model(scene::ModelNode),
     BiTreeNode(scene::BiTreeNode),
+    VisualEffect(VisualEffectNodeRenderable),
     DebugPoints(DebugPoints),
 }
 
@@ -618,7 +633,7 @@ pub enum RenderableBounds {
     Sphere(BoundingSphere),
 }
 
-pub struct ModelDrawCommand {
+pub struct DrawCommand {
     pub renderable: Renderable,
     pub bounds: Option<RenderableBounds>,
     pub transform: Mat4,

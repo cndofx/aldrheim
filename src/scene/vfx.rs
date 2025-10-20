@@ -3,7 +3,10 @@ use std::rc::Rc;
 use glam::{Mat4, Quat, Vec3};
 use rand::Rng;
 
-use crate::asset_manager::vfx::{ParticleEmitter, SpreadType, VisualEffectAsset};
+use crate::{
+    asset_manager::vfx::{ParticleEmitter, SpreadType, VisualEffectAsset},
+    renderer::{DrawCommand, Renderable, Renderer, pipelines::particles::ParticleInstance},
+};
 
 pub struct VisualEffectNode {
     pub effect: Rc<VisualEffectAsset>,
@@ -12,6 +15,9 @@ pub struct VisualEffectNode {
     pub emit_timers: Box<[f32]>,
     pub animation_timer: f32,
     pub last_translation: Option<Vec3>,
+
+    pub instance_buffer: Option<wgpu::Buffer>,
+    pub instance_buffer_capacity: u64,
 }
 
 impl VisualEffectNode {
@@ -22,6 +28,9 @@ impl VisualEffectNode {
             animation_timer: 0.0,
             last_translation: None,
             effect,
+
+            instance_buffer: None,
+            instance_buffer_capacity: 0,
         }
     }
 
@@ -44,7 +53,6 @@ impl VisualEffectNode {
         self.last_translation = Some(translation);
 
         // update existing particles
-        println!("updating {} particles", self.particles.len());
         for i in (0..self.particles.len()).rev() {
             let expired = self.particles[i].update(dt);
             if expired {
@@ -139,6 +147,58 @@ impl VisualEffectNode {
             }
         }
     }
+
+    // TODO: i wanted to avoid passing the renderer to the scene's render methods, is it possible here?
+    pub fn render(&mut self, transform: Mat4, renderer: &Renderer) -> Option<DrawCommand> {
+        if self.particles.is_empty() {
+            return None;
+        }
+
+        let instances = self
+            .particles
+            .iter()
+            .map(|particle| {
+                let lifetime_ratio = particle.lifetime_remaining / particle.lifetime;
+                ParticleInstance {
+                    position: particle.position,
+                    color: Vec3::new(lifetime_ratio, 0.0, 0.0),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if self.instance_buffer.is_none() || self.instance_buffer_capacity < instances.len() as u64
+        {
+            let new_capacity = ((instances.len() as f32 * 1.5) as u64).max(100);
+            log::debug!(
+                "growing vfx instance buffer capacity from {} to {}",
+                self.instance_buffer_capacity,
+                new_capacity
+            );
+            let new_buffer = renderer.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("VisualEffectNode Instance Buffer"),
+                size: new_capacity * std::mem::size_of::<ParticleInstance>() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.instance_buffer = Some(new_buffer);
+            self.instance_buffer_capacity = new_capacity;
+        }
+
+        let instance_buffer = self.instance_buffer.as_ref().unwrap();
+
+        renderer
+            .queue
+            .write_buffer(instance_buffer, 0, bytemuck::cast_slice(&instances));
+
+        Some(DrawCommand {
+            renderable: Renderable::VisualEffect(VisualEffectNodeRenderable {
+                instance_buffer: instance_buffer.clone(),
+                instance_count: instances.len() as u32,
+            }),
+            bounds: None,
+            transform,
+        })
+    }
 }
 
 pub struct Particle {
@@ -160,6 +220,11 @@ impl Particle {
 
         false
     }
+}
+
+pub struct VisualEffectNodeRenderable {
+    pub instance_buffer: wgpu::Buffer,
+    pub instance_count: u32,
 }
 
 fn random_distribution(min: f32, max: f32, dist: f32) -> f32 {

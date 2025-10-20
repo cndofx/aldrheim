@@ -22,12 +22,12 @@ impl Camera {
     }
 
     pub fn forward_right_up(&self) -> (Vec3, Vec3, Vec3) {
-        let up = Self::UP;
         let forward_x = self.yaw_radians.sin() * self.pitch_radians.cos();
         let forward_y = self.pitch_radians.sin();
         let forward_z = self.yaw_radians.cos() * self.pitch_radians.cos();
         let forward = Vec3::new(forward_x, forward_y, forward_z).normalize();
-        let right = forward.cross(up);
+        let right = forward.cross(Self::UP).normalize();
+        let up = right.cross(forward).normalize();
         (forward, right, up)
     }
 

@@ -16,7 +16,11 @@ use winit::{
 #[cfg(target_os = "linux")]
 use winit::platform::wayland::WindowAttributesExtWayland;
 
-use crate::{asset_manager::AssetManager, renderer::Renderer, scene::Scene};
+use crate::{
+    asset_manager::AssetManager,
+    renderer::{Renderer, camera::Camera},
+    scene::Scene,
+};
 
 pub struct App {
     asset_manager: AssetManager,
@@ -74,7 +78,7 @@ impl App {
         if camera_move_direction.length_squared() > 0.1 {
             camera_move_direction = camera_move_direction.normalize();
 
-            let (forward, right, up) = scene.camera.forward_right_up();
+            let (forward, right, _) = scene.camera.forward_right_up();
 
             let mut amount = self.camera_speed * (dt as f32);
             if self.camera_input_state.fast {
@@ -83,7 +87,7 @@ impl App {
 
             scene.camera.position += forward * camera_move_direction.z * amount;
             scene.camera.position += right * camera_move_direction.x * amount;
-            scene.camera.position += up * camera_move_direction.y * amount;
+            scene.camera.position += Camera::UP * camera_move_direction.y * amount;
         }
     }
 

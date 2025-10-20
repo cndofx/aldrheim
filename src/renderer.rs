@@ -244,6 +244,7 @@ impl Renderer {
 
         let camera_uniform = CameraUniform {
             view_proj: view_proj.to_cols_array_2d(),
+            position: [camera.position.x, camera.position.y, camera.position.z, 1.0],
             forward: [camera_forward.x, camera_forward.y, camera_forward.z, 1.0],
             right: [camera_right.x, camera_right.y, camera_right.z, 1.0],
             up: [camera_up.x, camera_up.y, camera_up.z, 1.0],
@@ -658,6 +659,7 @@ impl Renderer {
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
+    pub position: [f32; 4],
     pub forward: [f32; 4],
     pub right: [f32; 4],
     pub up: [f32; 4],

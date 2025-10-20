@@ -8,6 +8,7 @@ struct VertexOutput {
 
 struct CameraUniform {
     view_proj: mat4x4<f32>,
+    position: vec4<f32>,
     forward: vec4<f32>,
     right: vec4<f32>,
     up: vec4<f32>,

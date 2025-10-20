@@ -1,16 +1,8 @@
 use std::path::Path;
 
-use glam::Vec3;
 use roxmltree::Document;
 
-use crate::{
-    asset_manager::AssetManager,
-    renderer::{
-        Renderer,
-        pipelines::debug_point::{DebugPoints, DebugPointsVertex},
-    },
-    scene::{Scene, SceneNodeKind},
-};
+use crate::{asset_manager::AssetManager, renderer::Renderer, scene::Scene};
 
 impl Scene {
     // TODO: passing renderer here feels bad
@@ -55,20 +47,6 @@ impl Scene {
             asset_manager.load_level_model(Path::new(model_path), Some(xml_path), renderer)?;
 
         let mut scene = Scene::new();
-
-        let mut debug_points = Vec::new();
-        let debug_point_color = Vec3::new(1.0, 0.0, 0.0);
-        for child in &model_node.children {
-            if matches!(child.kind, SceneNodeKind::VisualEffect(_)) {
-                let position = child.transform.transform_point3(Vec3::ZERO);
-                debug_points.push(DebugPointsVertex {
-                    position,
-                    color: debug_point_color,
-                });
-            }
-        }
-        let debug_points = DebugPoints::new(&debug_points, &renderer.device);
-        scene.temp_debug_points = Some(debug_points);
 
         scene.root_node.children.push(model_node);
 

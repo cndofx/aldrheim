@@ -4,10 +4,7 @@ use glam::{Mat4, Vec3};
 
 use crate::{
     asset_manager::{BiTreeAsset, ModelAsset},
-    renderer::{
-        DrawCommand, Renderable, RenderableBounds, Renderer, camera::Camera,
-        pipelines::debug_point::DebugPoints,
-    },
+    renderer::{DrawCommand, Renderable, RenderableBounds, Renderer, camera::Camera},
     scene::vfx::VisualEffectNode,
     xnb::asset::model::BoundingBox,
 };
@@ -19,7 +16,6 @@ pub mod vfx;
 pub struct Scene {
     pub root_node: SceneNode,
     pub camera: Camera,
-    pub temp_debug_points: Option<DebugPoints>,
 }
 
 impl Scene {
@@ -40,7 +36,6 @@ impl Scene {
                 z_near: 0.1,
                 z_far: 10000.0,
             },
-            temp_debug_points: None,
         }
     }
 
@@ -58,14 +53,6 @@ impl Scene {
         transform_stack.push(Mat4::IDENTITY);
         self.root_node
             .render(&mut draw_commands, &mut transform_stack, renderer);
-
-        if let Some(debug_points) = &self.temp_debug_points {
-            draw_commands.push(DrawCommand {
-                renderable: Renderable::DebugPoints(debug_points.clone()),
-                bounds: None,
-                transform: Mat4::IDENTITY,
-            });
-        }
 
         draw_commands
     }

@@ -9,7 +9,6 @@ use crate::{
     renderer::{
         camera::{Camera, Frustum},
         pipelines::{
-            debug_point::{DebugPoints, DebugPointsPipeline, DebugPointsVertex},
             particles::ParticlesPipeline,
             render_deferred_effect::{RenderDeferredEffectPipeline, RenderDeferredEffectUniform},
         },
@@ -35,7 +34,6 @@ pub struct Renderer {
     placeholder_texture_view: wgpu::TextureView,
     pub window: Arc<Window>,
 
-    debug_points_pipeline: DebugPointsPipeline,
     particles_pipeline: ParticlesPipeline,
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
 
@@ -69,8 +67,7 @@ impl Renderer {
                     ..wgpu::Limits::defaults()
                 },
                 required_features: wgpu::Features::TEXTURE_COMPRESSION_BC
-                    | wgpu::Features::PUSH_CONSTANTS
-                    | wgpu::Features::POLYGON_MODE_POINT, // TODO: only supported on vulkan? remove later
+                    | wgpu::Features::PUSH_CONSTANTS,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,
@@ -95,7 +92,6 @@ impl Renderer {
             view_formats: Vec::new(),
         };
 
-        let debug_points_pipeline = DebugPointsPipeline::new(&device, &surface_config)?;
         let particles_pipeline = ParticlesPipeline::new(&device, &surface_config)?;
         let render_deferred_effect_pipeline =
             RenderDeferredEffectPipeline::new(&device, &surface_config)?;
@@ -157,7 +153,6 @@ impl Renderer {
             depth_texture,
             placeholder_texture,
             placeholder_texture_view,
-            debug_points_pipeline,
             particles_pipeline,
             render_deferred_effect_pipeline,
             linear_sampler,
@@ -205,7 +200,7 @@ impl Renderer {
 
         // let pre_cull_draw_count = draw_commands.len();
         let frustum = Frustum::new(view_proj);
-        let mut culled_draw_commands = draw_commands
+        let culled_draw_commands = draw_commands
             .iter()
             .filter(|draw| {
                 let Some(bounds) = &draw.bounds else {
@@ -222,14 +217,6 @@ impl Renderer {
                 }
             })
             .collect::<Vec<_>>();
-
-        // just make debug points come after everything else for now
-        culled_draw_commands.sort_unstable_by(|a, b| match (&a.renderable, &b.renderable) {
-            (Renderable::DebugPoints(_), Renderable::DebugPoints(_)) => Ordering::Equal,
-            (Renderable::DebugPoints(_), _) => Ordering::Greater,
-            (_, Renderable::DebugPoints(_)) => Ordering::Less,
-            _ => Ordering::Equal,
-        });
 
         let surface_texture = self.surface.get_current_texture()?;
         let surface_view = surface_texture
@@ -340,16 +327,6 @@ impl Renderer {
                             bytemuck::cast_slice(&[mvp]),
                         );
                         render_pass.draw(0..4, 0..vfx.instance_count);
-                    }
-                    Renderable::DebugPoints(points) => {
-                        render_pass.set_pipeline(&self.debug_points_pipeline.pipeline);
-                        render_pass.set_vertex_buffer(0, points.vertex_buffer.slice(..));
-                        render_pass.set_push_constants(
-                            wgpu::ShaderStages::VERTEX,
-                            0,
-                            bytemuck::cast_slice(&[view_proj]),
-                        );
-                        render_pass.draw(0..points.vertex_count, 0..1);
                     }
                 }
             }
@@ -625,7 +602,6 @@ pub enum Renderable {
     Model(scene::ModelNode),
     BiTreeNode(scene::BiTreeNode),
     VisualEffect(VisualEffectNodeRenderable),
-    DebugPoints(DebugPoints),
 }
 
 pub enum RenderableBounds {

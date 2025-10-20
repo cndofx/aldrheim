@@ -1,168 +1,194 @@
-use anyhow::Context;
-use roxmltree::{Document, Node};
+use std::rc::Rc;
 
-use crate::scene::vfx::continuous_emitter::ContinuousEmitter;
+use glam::{Mat4, Quat, Vec3};
+use rand::Rng;
 
-pub mod continuous_emitter;
+use crate::asset_manager::vfx::{ParticleEmitter, SpreadType, VisualEffectAsset};
 
-#[derive(Debug)]
-pub struct VisualEffect {
-    pub kind: VisualEffectKind,
-    pub emitters: Vec<ParticleEmitter>,
+pub struct VisualEffectNode {
+    pub effect: Rc<VisualEffectAsset>,
+    pub particles: Vec<Particle>,
+    /// each item in this list corresponds to the same index in `effect.emitters`
+    pub emit_timers: Box<[f32]>,
+    pub animation_timer: f32,
+    pub last_translation: Option<Vec3>,
 }
 
-impl VisualEffect {
-    pub fn read_xml(xml: &str) -> anyhow::Result<Self> {
-        VisualEffect::read_xml_inner(xml, true)
+impl VisualEffectNode {
+    pub fn new(effect: Rc<VisualEffectAsset>) -> Self {
+        VisualEffectNode {
+            particles: Vec::new(),
+            emit_timers: vec![0.0; effect.emitters.len()].into_boxed_slice(),
+            animation_timer: 0.0,
+            last_translation: None,
+            effect,
+        }
     }
 
-    fn read_xml_inner(xml: &str, allow_retry: bool) -> anyhow::Result<Self> {
-        let doc = match Document::parse(xml) {
-            Ok(v) => v,
-            Err(roxmltree::Error::MalformedEntityReference(_)) if allow_retry => {
-                log::warn!("found malformed entity reference in xml, stripping and trying again");
-                let stripped = strip_malformed_reference(xml);
-                return VisualEffect::read_xml_inner(&stripped, false);
-            }
-            Err(e) => Err(e)?,
-        };
-
-        let root = doc.root_element();
-        if root.tag_name().name() != "Effect" {
-            anyhow::bail!("expected root element to be an <Effect> node");
+    pub fn update(&mut self, dt: f32, transform: Mat4) {
+        for timer in self.emit_timers.iter_mut() {
+            *timer += dt;
         }
 
-        let kind = if let Some(kind_attr) = root.attribute("type") {
-            match kind_attr {
-                "Single" => VisualEffectKind::Single,
-                "Looping" => VisualEffectKind::Looping,
-                "Infinite" => VisualEffectKind::Infinite,
-                _ => {
-                    anyhow::bail!("unsupported <Effect> node 'type' attribute value '{kind_attr}'");
+        self.animation_timer += dt as f32;
+        if self.animation_timer >= self.effect.duration {
+            self.animation_timer -= self.effect.duration;
+        }
+
+        let (_, rotation, translation) = transform.to_scale_rotation_translation();
+        let delta_translation = if let Some(last_translation) = self.last_translation {
+            translation - last_translation
+        } else {
+            Vec3::ZERO
+        };
+        self.last_translation = Some(translation);
+
+        // update existing particles
+        println!("updating {} particles", self.particles.len());
+        for i in (0..self.particles.len()).rev() {
+            let expired = self.particles[i].update(dt);
+            if expired {
+                self.particles.swap_remove(i);
+            }
+        }
+
+        // spawn new particles
+        for (emitter_i, emitter) in self.effect.emitters.iter().enumerate() {
+            match emitter {
+                ParticleEmitter::Continuous(emitter) => {
+                    let particles_per_second = emitter
+                        .particles_per_second
+                        .interpolate(self.animation_timer);
+
+                    let particles_to_emit =
+                        (particles_per_second * self.emit_timers[emitter_i]) as i32;
+                    if particles_to_emit < 1 {
+                        continue;
+                    } else {
+                        self.emit_timers[emitter_i] = 0.0;
+                    }
+
+                    let position_x = emitter.position_x.interpolate(self.animation_timer);
+                    let position_y = emitter.position_y.interpolate(self.animation_timer);
+                    let position_z = emitter.position_z.interpolate(self.animation_timer);
+                    let position = Vec3::new(position_x, position_y, position_z);
+
+                    let position_offset_x =
+                        emitter.position_offset_x.interpolate(self.animation_timer);
+                    let position_offset_y =
+                        emitter.position_offset_y.interpolate(self.animation_timer);
+                    let position_offset_z =
+                        emitter.position_offset_z.interpolate(self.animation_timer);
+                    let position_offset =
+                        Vec3::new(position_offset_x, position_offset_y, position_offset_z);
+
+                    let velocity_min = emitter.velocity_min.interpolate(self.animation_timer);
+                    let velocity_max = emitter.velocity_max.interpolate(self.animation_timer);
+                    let velocity_dist = emitter.velocity_dist.interpolate(self.animation_timer);
+                    let velocity = random_distribution(velocity_min, velocity_max, velocity_dist);
+
+                    let lifetime_min = emitter.lifetime_min.interpolate(self.animation_timer);
+                    let lifetime_max = emitter.lifetime_max.interpolate(self.animation_timer);
+                    let lifetime_dist = emitter.lifetime_dist.interpolate(self.animation_timer);
+                    let lifetime = random_distribution(lifetime_min, lifetime_max, lifetime_dist);
+
+                    if !matches!(emitter.spread_type, SpreadType::Arc) {
+                        todo!("other spread types")
+                    }
+
+                    let horizontal_angle_radians = emitter
+                        .spread_arc_horizontal_angle_degrees
+                        .interpolate(self.animation_timer)
+                        .to_radians();
+                    let horizontal_angle_dist = emitter
+                        .spread_arc_horizontal_angle_dist
+                        .interpolate(self.animation_timer);
+                    let vertical_angle_radians_min = emitter
+                        .spread_arc_vertical_angle_degrees_min
+                        .interpolate(self.animation_timer)
+                        .to_radians();
+                    let vertical_angle_radians_max = emitter
+                        .spread_arc_vertical_angle_degrees_max
+                        .interpolate(self.animation_timer)
+                        .to_radians();
+                    let vertical_angle_dist = emitter
+                        .spread_arc_vertical_angle_dist
+                        .interpolate(self.animation_timer);
+
+                    for _ in 0..particles_to_emit {
+                        let velocity = random_direction_in_arc(
+                            rotation,
+                            horizontal_angle_radians,
+                            horizontal_angle_dist,
+                            vertical_angle_radians_min,
+                            vertical_angle_radians_max,
+                            vertical_angle_dist,
+                        ) * velocity;
+                        // TODO: handle relative velocity
+
+                        let particle = Particle {
+                            position: position + position_offset,
+                            velocity,
+                            lifetime,
+                            lifetime_remaining: lifetime,
+                        };
+
+                        self.particles.push(particle);
+                    }
                 }
             }
-        } else {
-            anyhow::bail!("expected <Effect> node to have a 'type' attribute");
-        };
+        }
+    }
+}
 
-        let mut emitters: Vec<ParticleEmitter> = Vec::new();
+pub struct Particle {
+    pub position: Vec3,
+    pub velocity: Vec3,
+    pub lifetime: f32,
+    pub lifetime_remaining: f32,
+}
 
-        for child in root.children().filter(|n| n.is_element()) {
-            let child_name = child.tag_name().name();
-
-            match child_name {
-                "ContinuousEmitter" => {
-                    let emitter = ContinuousEmitter::read(child)?;
-                    emitters.push(ParticleEmitter::Continuous(emitter));
-                }
-                _ => {
-                    log::error!("unsupported <Effect> child node <{child_name}>");
-                }
-            }
+impl Particle {
+    /// returns true if this particle has expired
+    pub fn update(&mut self, dt: f32) -> bool {
+        self.lifetime_remaining -= dt;
+        if self.lifetime_remaining <= 0.0 {
+            return true;
         }
 
-        Ok(VisualEffect { kind, emitters })
+        self.position += self.velocity * dt;
+
+        false
     }
 }
 
-#[derive(Debug)]
-pub enum VisualEffectKind {
-    Single,
-    Looping,
-    Infinite,
+fn random_distribution(min: f32, max: f32, dist: f32) -> f32 {
+    let base: f32 = rand::rng().random();
+    base.powf(dist) * (max - min) + min
 }
 
-#[derive(Debug)]
-pub struct VisualEffectPropertyKeyframe {
-    pub time: i32, // looks like an integer? probably a keyframe index instead of a "seconds" or similar value?
-    pub value: f32,
-}
+fn random_direction_in_arc(
+    orientation: Quat,
+    horizontal_angle_radians: f32,
+    horizontal_angle_dist: f32,
+    vertical_angle_radians_min: f32,
+    vertical_angle_radians_max: f32,
+    vertical_angle_dist: f32,
+) -> Vec3 {
+    let h_base = rand::rng().random::<f32>() * 2.0 - 1.0;
+    let h_angle =
+        h_base.abs().powf(horizontal_angle_dist) * h_base.signum() * horizontal_angle_radians;
 
-impl VisualEffectPropertyKeyframe {
-    pub fn read(node: Node) -> anyhow::Result<Self> {
-        let time = if let Some(time_attr) = node.attribute("time") {
-            time_attr.parse::<i32>().with_context(|| {
-                format!("unable to parse vfx property keyframe time from '{time_attr}'")
-            })?
-        } else {
-            anyhow::bail!("expected <Key> node to have a 'time' attribute");
-        };
+    let v_base = rand::rng().random::<f32>() * 2.0 - 1.0;
+    let v_angle = (v_base.abs().powf(vertical_angle_dist)
+        * v_base.signum()
+        * (vertical_angle_radians_max - vertical_angle_radians_min)
+        + (vertical_angle_radians_min + vertical_angle_radians_max))
+        * 0.5;
 
-        let value = if let Some(value_attr) = node.attribute("value") {
-            value_attr.parse::<f32>().with_context(|| {
-                format!("unable to parse vfx property keyframe value from '{value_attr}'")
-            })?
-        } else {
-            anyhow::bail!("expected <Key> node to have a 'value' attribute");
-        };
+    let x = h_angle.sin();
+    let y = v_angle.sin();
+    let z = (h_angle.cos() * -1.0) * v_angle.cos();
 
-        Ok(VisualEffectPropertyKeyframe { time, value })
-    }
-}
-
-#[derive(Debug)]
-pub enum VisualEffectProperty {
-    Constant(f32),
-    Animated(Vec<VisualEffectPropertyKeyframe>),
-}
-
-impl VisualEffectProperty {
-    pub fn read(node: Node) -> anyhow::Result<Self> {
-        let name = node.tag_name().name();
-        let value = node
-            .attributes()
-            .find(|attr| attr.name().eq_ignore_ascii_case("value"))
-            .map(|attr| attr.value());
-
-        if let Some(value) = value {
-            return Ok(VisualEffectProperty::Constant(value.parse()?));
-        }
-
-        let mut keyframes = Vec::new();
-
-        for child in node.children().filter(|n| n.is_element()) {
-            let child_name = child.tag_name().name();
-            if child_name != "Key" {
-                continue;
-            }
-
-            let keyframe = VisualEffectPropertyKeyframe::read(child)?;
-            keyframes.push(keyframe);
-        }
-
-        if keyframes.is_empty() {
-            anyhow::bail!(
-                "expected <{name}> node to have <Key> children because it does not have a 'value' attribute"
-            );
-        }
-
-        Ok(VisualEffectProperty::Animated(keyframes))
-    }
-}
-
-#[derive(Debug)]
-pub enum ParticleEmitter {
-    Continuous(ContinuousEmitter),
-}
-
-// technically stripping all references but close enough unless it causes problems later
-fn strip_malformed_reference(xml: &str) -> String {
-    let mut out = String::with_capacity(xml.len());
-
-    let mut chars = xml.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '&' {
-            while let Some(&next) = chars.peek() {
-                if next.is_whitespace() || next == ';' {
-                    chars.next();
-                    break;
-                }
-                chars.next();
-            }
-        } else {
-            out.push(c);
-        }
-    }
-
-    out
+    orientation * Vec3::new(x, y, z)
 }

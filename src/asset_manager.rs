@@ -9,10 +9,13 @@ use anyhow::Context;
 use glam::{Mat4, Quat, Vec3};
 
 use crate::{
+    asset_manager::vfx::VisualEffectAsset,
     renderer::{Renderer, pipelines::render_deferred_effect::RenderDeferredEffectUniform},
-    scene::{self, SceneNode, SceneNodeKind, VisualEffectNode, vfx::VisualEffect},
+    scene::{self, SceneNode, SceneNodeKind, vfx::VisualEffectNode},
     xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
+
+pub mod vfx;
 
 pub struct AssetManager {
     magicka_path: PathBuf,
@@ -31,7 +34,7 @@ pub struct AssetManager {
     //
     // they are also preloaded up front as they can located in arbitrary subdirectories,
     // so locating the file would require a recursive search of the entire Content/Effect directory
-    visual_effects: HashMap<String, Rc<VisualEffect>>,
+    visual_effects: HashMap<String, Rc<VisualEffectAsset>>,
 }
 
 impl AssetManager {
@@ -198,7 +201,7 @@ impl AssetManager {
                     effect_storage.position,
                 ),
                 children: Vec::new(),
-                kind: SceneNodeKind::VisualEffect(VisualEffectNode { effect }),
+                kind: SceneNodeKind::VisualEffect(VisualEffectNode::new(effect)),
             };
 
             scene_node.children.push(effect_node);
@@ -209,7 +212,7 @@ impl AssetManager {
         Ok(scene_node)
     }
 
-    pub fn load_visual_effect(&self, name: &str) -> anyhow::Result<Rc<VisualEffect>> {
+    pub fn load_visual_effect(&self, name: &str) -> anyhow::Result<Rc<VisualEffectAsset>> {
         if let Some(effect) = self.visual_effects.get(name) {
             return Ok(effect.clone());
         } else {
@@ -373,7 +376,7 @@ fn fix_xnb_path(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-fn preload_visual_effects(base: &Path) -> anyhow::Result<HashMap<String, Rc<VisualEffect>>> {
+fn preload_visual_effects(base: &Path) -> anyhow::Result<HashMap<String, Rc<VisualEffectAsset>>> {
     let path = base.join("Content/Effects");
     let mut map = HashMap::new();
 
@@ -384,7 +387,7 @@ fn preload_visual_effects(base: &Path) -> anyhow::Result<HashMap<String, Rc<Visu
 
 fn preload_visual_effects_inner(
     path: &Path,
-    map: &mut HashMap<String, Rc<VisualEffect>>,
+    map: &mut HashMap<String, Rc<VisualEffectAsset>>,
 ) -> anyhow::Result<()> {
     for entry in std::fs::read_dir(&path)? {
         // cursed closure to allow catching all errors at once
@@ -396,7 +399,7 @@ fn preload_visual_effects_inner(
 
             if metadata.is_file() {
                 let xml_string = std::fs::read_to_string(&path)?;
-                let effect = VisualEffect::read_xml(&xml_string).with_context(|| {
+                let effect = VisualEffectAsset::read_xml(&xml_string).with_context(|| {
                     format!("failed to read visual effect at path {}", path.display())
                 })?;
                 let name = path

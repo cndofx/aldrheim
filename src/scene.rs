@@ -8,7 +8,7 @@ use crate::{
         ModelDrawCommand, Renderable, RenderableBounds, camera::Camera,
         pipelines::debug_point::DebugPoints,
     },
-    scene::vfx::VisualEffect,
+    scene::vfx::VisualEffectNode,
     xnb::asset::model::BoundingBox,
 };
 
@@ -44,6 +44,10 @@ impl Scene {
         }
     }
 
+    pub fn update(&mut self, dt: f32) {
+        self.root_node.update(dt);
+    }
+
     pub fn render(&self) -> Vec<ModelDrawCommand> {
         if !self.root_node.visible {
             return Vec::new();
@@ -76,6 +80,19 @@ pub struct SceneNode {
 }
 
 impl SceneNode {
+    pub fn update(&mut self, dt: f32) {
+        match &mut self.kind {
+            SceneNodeKind::Empty => {}
+            SceneNodeKind::Model(_) => {}
+            SceneNodeKind::BiTree(_) => {}
+            SceneNodeKind::VisualEffect(vfx_node) => vfx_node.update(dt, self.transform),
+        }
+
+        for child in self.children.iter_mut() {
+            child.update(dt);
+        }
+    }
+
     pub fn render(
         &self,
         draw_commands: &mut Vec<ModelDrawCommand>,
@@ -131,8 +148,4 @@ pub struct BiTreeNode {
     pub start_index: u32,
     pub index_count: u32,
     pub bounding_box: BoundingBox,
-}
-
-pub struct VisualEffectNode {
-    pub effect: Rc<VisualEffect>,
 }

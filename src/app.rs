@@ -46,10 +46,10 @@ impl App {
         Ok(app)
     }
 
-    fn update(&mut self, dt: f64) {
-        // println!("{:.2} fps", 1.0 / dt);
-
+    fn update(&mut self, dt: f32) {
         let scene = self.scene.as_mut().unwrap();
+
+        scene.update(dt);
 
         let mut camera_move_direction = Vec3::ZERO;
         if self.camera_input_state.forward {
@@ -185,7 +185,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let current_time = Instant::now();
-                let dt = (current_time - self.last_time).as_secs_f64();
+                let dt = (current_time - self.last_time).as_secs_f32();
                 self.last_time = current_time;
                 self.update(dt);
 

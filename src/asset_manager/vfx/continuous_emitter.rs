@@ -20,6 +20,11 @@ pub struct ContinuousEmitter {
     pub velocity_min: VisualEffectProperty,
     pub velocity_max: VisualEffectProperty,
     pub velocity_dist: VisualEffectProperty,
+    pub rotation_degrees_min: VisualEffectProperty,
+    pub rotation_degrees_max: VisualEffectProperty,
+    pub rotation_speed_degrees_min: VisualEffectProperty,
+    pub rotation_speed_degrees_max: VisualEffectProperty,
+    pub rotation_ccw_chance: VisualEffectProperty,
     pub size_start_min: VisualEffectProperty,
     pub size_start_max: VisualEffectProperty,
     pub size_start_dist: VisualEffectProperty,
@@ -54,6 +59,11 @@ impl ContinuousEmitter {
         let mut velocity_min: Option<VisualEffectProperty> = None;
         let mut velocity_max: Option<VisualEffectProperty> = None;
         let mut velocity_dist: Option<VisualEffectProperty> = None;
+        let mut rotation_degrees_min: Option<VisualEffectProperty> = None;
+        let mut rotation_degrees_max: Option<VisualEffectProperty> = None;
+        let mut rotation_speed_degrees_min: Option<VisualEffectProperty> = None;
+        let mut rotation_speed_degrees_max: Option<VisualEffectProperty> = None;
+        let mut rotation_ccw_chance: Option<VisualEffectProperty> = None;
         let mut lifetime_min: Option<VisualEffectProperty> = None;
         let mut lifetime_max: Option<VisualEffectProperty> = None;
         let mut lifetime_dist: Option<VisualEffectProperty> = None;
@@ -143,6 +153,26 @@ impl ContinuousEmitter {
                 "VelocityDist" => {
                     velocity_dist = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
                 }
+                "RotationMin" => {
+                    rotation_degrees_min =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "RotationMax" => {
+                    rotation_degrees_max =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "RotationSpeedMin" => {
+                    rotation_speed_degrees_min =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "RotationSpeedMax" => {
+                    rotation_speed_degrees_max =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "RotationPCCW" => {
+                    rotation_ccw_chance =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
                 "SizeStartMin" => {
                     size_start_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
                 }
@@ -216,6 +246,16 @@ impl ContinuousEmitter {
         let velocity_min = velocity_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let velocity_max = velocity_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let velocity_dist = velocity_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let rotation_degrees_min =
+            rotation_degrees_min.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let rotation_degrees_max =
+            rotation_degrees_max.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let rotation_speed_degrees_min =
+            rotation_speed_degrees_min.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let rotation_speed_degrees_max =
+            rotation_speed_degrees_max.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let rotation_ccw_chance =
+            rotation_ccw_chance.unwrap_or(VisualEffectProperty::Constant(50.0));
         let size_start_min = size_start_min.unwrap_or(VisualEffectProperty::Constant(1.0));
         let size_start_max = size_start_max.unwrap_or(VisualEffectProperty::Constant(1.0));
         let size_start_dist = size_start_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
@@ -243,6 +283,11 @@ impl ContinuousEmitter {
             velocity_min,
             velocity_max,
             velocity_dist,
+            rotation_degrees_min,
+            rotation_degrees_max,
+            rotation_speed_degrees_min,
+            rotation_speed_degrees_max,
+            rotation_ccw_chance: rotation_ccw_chance,
             size_start_min,
             size_start_max,
             size_start_dist,

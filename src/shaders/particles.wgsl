@@ -2,7 +2,8 @@ struct InstanceInput {
     @location(0) position: vec3<f32>,
     @location(1) lifetime: f32,
     @location(2) size: f32,
-    @location(3) sprite: u32,
+    @location(3) rotation: f32,
+    @location(4) sprite: u32,
 };
 
 struct VertexOutput {
@@ -48,11 +49,19 @@ fn vs_main(in: InstanceInput, @builtin(vertex_index) vertex_index: u32) -> Verte
     } else {
         corner = vec2<f32>(-0.5, 0.5);
     }
-    var corner_pos = in.position + (camera.right.xyz * corner.x * in.size) + (camera.up.xyz * corner.y * in.size);
 
-    // TODO: particle textures loop flipped vertically, but it looks worse when i correct them?
-    // var corner_uv = corner * vec2<f32>(1.0, -1.0) + vec2<f32>(0.5);
-    var corner_uv = corner + vec2<f32>(0.5);
+    var corner_uv = corner * vec2<f32>(1.0, -1.0) + vec2<f32>(0.5);
+
+    var sin_r = sin(in.rotation);
+    var cos_r = cos(in.rotation);
+    var rotated_corner = vec2<f32>(
+        corner.x *        cos_r + corner.y * sin_r,
+        corner.x * -1.0 * sin_r + corner.y * cos_r,
+    );
+
+    var aligned_corner = in.position 
+                       + (camera.right.xyz * rotated_corner.x * in.size) 
+                       + (camera.up.xyz    * rotated_corner.y * in.size);
 
     var sheet_index = in.sprite / 64;
     var sprite_index = in.sprite % 64;
@@ -68,7 +77,7 @@ fn vs_main(in: InstanceInput, @builtin(vertex_index) vertex_index: u32) -> Verte
     );
 
     var out: VertexOutput;
-    out.clip_position = camera.view_proj * model * vec4<f32>(corner_pos, 1.0);
+    out.clip_position = camera.view_proj * model * vec4<f32>(aligned_corner, 1.0);
     out.tex_coords = vec3<f32>(sprite_uv, in.lifetime);
     out.sheet_mask = sheet_mask;
     return out;

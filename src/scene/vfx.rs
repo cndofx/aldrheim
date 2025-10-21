@@ -1,4 +1,7 @@
-use std::rc::Rc;
+use std::{
+    f32::consts::{PI, TAU},
+    rc::Rc,
+};
 
 use glam::{Mat4, Quat, Vec3};
 use rand::Rng;
@@ -89,12 +92,28 @@ impl VisualEffectNode {
                         emitter.position_offset_y.interpolate(self.animation_timer);
                     let position_offset_z =
                         emitter.position_offset_z.interpolate(self.animation_timer);
-                    // let position_offset =
-                    //     Vec3::new(position_offset_x, position_offset_y, position_offset_z);
 
                     let velocity_min = emitter.velocity_min.interpolate(self.animation_timer);
                     let velocity_max = emitter.velocity_max.interpolate(self.animation_timer);
                     let velocity_dist = emitter.velocity_dist.interpolate(self.animation_timer);
+
+                    let rotation_degrees_min = emitter
+                        .rotation_degrees_min
+                        .interpolate(self.animation_timer);
+                    let rotation_degrees_max = emitter
+                        .rotation_degrees_max
+                        .interpolate(self.animation_timer);
+
+                    let rotation_speed_degrees_min = emitter
+                        .rotation_speed_degrees_min
+                        .interpolate(self.animation_timer);
+                    let rotation_speed_degrees_max = emitter
+                        .rotation_speed_degrees_max
+                        .interpolate(self.animation_timer);
+                    let rotation_ccw_chance = emitter
+                        .rotation_ccw_chance
+                        .interpolate(self.animation_timer)
+                        / 100.0; // ranges from 0..100, change to 0..1
 
                     let size_start_min = emitter.size_start_min.interpolate(self.animation_timer);
                     let size_start_max = emitter.size_start_max.interpolate(self.animation_timer);
@@ -151,6 +170,17 @@ impl VisualEffectNode {
                         ) * velocity;
                         // TODO: handle relative velocity
 
+                        let rotation_radians =
+                            random_distribution(rotation_degrees_min, rotation_degrees_max, 1.0)
+                                .to_radians();
+
+                        let rotation_speed_radians = (random_distribution(
+                            rotation_speed_degrees_min,
+                            rotation_speed_degrees_max,
+                            1.0,
+                        ) * random_sign(rotation_ccw_chance))
+                        .to_radians();
+
                         let position_offset_x =
                             position_offset_x * (rng.random::<f32>() * 2.0 - 1.0);
                         let position_offset_y =
@@ -163,6 +193,8 @@ impl VisualEffectNode {
                         let particle = Particle {
                             position: position + position_offset,
                             velocity,
+                            rotation: rotation_radians,
+                            rotation_speed: rotation_speed_radians,
                             lifetime,
                             lifetime_remaining: lifetime,
                             size_start,
@@ -199,6 +231,7 @@ impl VisualEffectNode {
                     // the particle vertices define a 1x1 quad,
                     // but a "size" of 1 means a roughly 2x2 quad?
                     size: lerp(particle.size_start, particle.size_end, lifetime) * 2.0,
+                    rotation: particle.rotation,
                     sprite: particle.sprite as u32,
                 }
             })
@@ -244,6 +277,8 @@ impl VisualEffectNode {
 pub struct Particle {
     pub position: Vec3,
     pub velocity: Vec3,
+    pub rotation: f32,
+    pub rotation_speed: f32,
     pub lifetime: f32,
     pub lifetime_remaining: f32,
     pub size_start: f32,
@@ -260,6 +295,11 @@ impl Particle {
         }
 
         self.position += self.velocity * dt;
+
+        self.rotation = (self.rotation + self.rotation_speed * dt).rem_euclid(TAU);
+        if self.rotation > PI {
+            self.rotation -= TAU;
+        }
 
         false
     }

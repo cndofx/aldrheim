@@ -228,15 +228,17 @@ pub struct ParticleInstance {
     /// starts at 0.0, approaches 1.0 towards the end of the particles life
     pub lifetime: f32,
     pub size: f32,
+    pub rotation: f32,
     pub sprite: u32,
 }
 
 impl ParticleInstance {
-    pub const ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+    pub const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
         0 => Float32x3,
         1 => Float32,
         2 => Float32,
-        3 => Uint32,
+        3 => Float32,
+        4 => Uint32,
     ];
 
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {

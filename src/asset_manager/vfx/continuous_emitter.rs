@@ -20,6 +20,12 @@ pub struct ContinuousEmitter {
     pub velocity_min: VisualEffectProperty,
     pub velocity_max: VisualEffectProperty,
     pub velocity_dist: VisualEffectProperty,
+    pub size_start_min: VisualEffectProperty,
+    pub size_start_max: VisualEffectProperty,
+    pub size_start_dist: VisualEffectProperty,
+    pub size_end_min: VisualEffectProperty,
+    pub size_end_max: VisualEffectProperty,
+    pub size_end_dist: VisualEffectProperty,
     pub lifetime_min: VisualEffectProperty,
     pub lifetime_max: VisualEffectProperty,
     pub lifetime_dist: VisualEffectProperty,
@@ -51,6 +57,12 @@ impl ContinuousEmitter {
         let mut lifetime_min: Option<VisualEffectProperty> = None;
         let mut lifetime_max: Option<VisualEffectProperty> = None;
         let mut lifetime_dist: Option<VisualEffectProperty> = None;
+        let mut size_start_min: Option<VisualEffectProperty> = None;
+        let mut size_start_max: Option<VisualEffectProperty> = None;
+        let mut size_start_dist: Option<VisualEffectProperty> = None;
+        let mut size_end_min: Option<VisualEffectProperty> = None;
+        let mut size_end_max: Option<VisualEffectProperty> = None;
+        let mut size_end_dist: Option<VisualEffectProperty> = None;
         let mut particles_per_second: Option<VisualEffectProperty> = None;
         let mut particle: Option<u8> = None;
 
@@ -131,6 +143,25 @@ impl ContinuousEmitter {
                 "VelocityDist" => {
                     velocity_dist = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
                 }
+                "SizeStartMin" => {
+                    size_start_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SizeStartMax" => {
+                    size_start_max = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SizeStartMDist" => {
+                    size_start_dist =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SizeEndMin" => {
+                    size_end_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SizeEndMax" => {
+                    size_end_max = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SizeEndMDist" => {
+                    size_end_dist = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
                 "LifeTimeMin" => {
                     lifetime_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
                 }
@@ -185,6 +216,12 @@ impl ContinuousEmitter {
         let velocity_min = velocity_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let velocity_max = velocity_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let velocity_dist = velocity_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let size_start_min = size_start_min.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let size_start_max = size_start_max.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let size_start_dist = size_start_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let size_end_min = size_end_min.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let size_end_max = size_end_max.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let size_end_dist = size_end_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
         let lifetime_min = lifetime_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let lifetime_max = lifetime_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let lifetime_dist = lifetime_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
@@ -206,6 +243,12 @@ impl ContinuousEmitter {
             velocity_min,
             velocity_max,
             velocity_dist,
+            size_start_min,
+            size_start_max,
+            size_start_dist,
+            size_end_min,
+            size_end_max,
+            size_end_dist,
             lifetime_min,
             lifetime_max,
             lifetime_dist,

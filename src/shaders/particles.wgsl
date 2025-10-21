@@ -1,7 +1,8 @@
 struct InstanceInput {
     @location(0) position: vec3<f32>,
     @location(1) lifetime: f32,
-    @location(2) sprite: u32,
+    @location(2) size: f32,
+    @location(3) sprite: u32,
 };
 
 struct VertexOutput {
@@ -47,15 +48,17 @@ fn vs_main(in: InstanceInput, @builtin(vertex_index) vertex_index: u32) -> Verte
     } else {
         corner = vec2<f32>(-0.5, 0.5);
     }
-    var corner_pos = in.position + (camera.right.xyz * corner.x) + (camera.up.xyz * corner.y);
+    var corner_pos = in.position + (camera.right.xyz * corner.x * in.size) + (camera.up.xyz * corner.y * in.size);
 
-    var corner_uv = (corner + vec2<f32>(0.5)) / 8.0;
+    // TODO: particle textures loop flipped vertically, but it looks worse when i correct them?
+    // var corner_uv = corner * vec2<f32>(1.0, -1.0) + vec2<f32>(0.5);
+    var corner_uv = corner + vec2<f32>(0.5);
 
     var sheet_index = in.sprite / 64;
     var sprite_index = in.sprite % 64;
     var sprite_y = sprite_index / 8;
     var sprite_x = sprite_index % 8;
-    var sprite_uv = vec2<f32>(f32(sprite_x) / 8.0, f32(sprite_y) / 8.0) + corner_uv;
+    var sprite_uv = vec2<f32>(f32(sprite_x) / 8.0, f32(sprite_y) / 8.0) + (corner_uv / 8.0);
 
     var sheet_mask = vec4<f32>(
         select(0.0, 1.0, sheet_index == 0),
@@ -83,8 +86,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                + sample_c * in.sheet_mask.z 
                + sample_d * in.sheet_mask.w;
 
-    if sample.a < 0.1 {
-        discard;
-    }
     return sample;
 }

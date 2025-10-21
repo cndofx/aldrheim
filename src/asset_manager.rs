@@ -200,6 +200,7 @@ impl AssetManager {
         }
 
         for effect_storage in &level_model.effect_storages {
+            dbg!(&effect_storage.effect);
             let effect = self.load_visual_effect(&effect_storage.effect)?;
 
             let effect_node = SceneNode {

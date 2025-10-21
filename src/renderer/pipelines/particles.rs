@@ -176,7 +176,15 @@ impl ParticlesPipeline {
                     entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: context.surface_config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
+                        // TODO: not all particles use additive blending?
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::SrcAlpha,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent::OVER,
+                        }),
                         write_mask: wgpu::ColorWrites::all(),
                     })],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -192,7 +200,7 @@ impl ParticlesPipeline {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: true,
+                    depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Less,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
@@ -219,25 +227,16 @@ pub struct ParticleInstance {
     pub position: Vec3,
     /// starts at 0.0, approaches 1.0 towards the end of the particles life
     pub lifetime: f32,
+    pub size: f32,
     pub sprite: u32,
 }
 
-// position
-// rotation
-// radius
-// normalized_lifetime
-// color
-// sprite
-// alpha_blended
-// hsv_colorize
-// rotation_aligned
-// velocity
-
 impl ParticleInstance {
-    pub const ATTRIBUTES: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
+    pub const ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
         0 => Float32x3,
         1 => Float32,
-        2 => Uint32,
+        2 => Float32,
+        3 => Uint32,
     ];
 
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {

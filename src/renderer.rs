@@ -1,4 +1,4 @@
-use std::{rc::Rc, sync::Arc};
+use std::{cmp::Ordering, rc::Rc, sync::Arc};
 
 use glam::Mat4;
 use wgpu::util::DeviceExt;
@@ -384,7 +384,7 @@ impl Renderer {
 
         // let pre_cull_draw_count = draw_commands.len();
         let frustum = Frustum::new(view_proj);
-        let culled_draw_commands = draw_commands
+        let mut culled_draw_commands = draw_commands
             .iter()
             .filter(|draw| {
                 let Some(bounds) = &draw.bounds else {
@@ -401,6 +401,21 @@ impl Renderer {
                 }
             })
             .collect::<Vec<_>>();
+
+        // make sure everything that needs alpha blending is drawn last
+        // TODO: this sucks though, this value and the pipeline in use
+        // by the draw should be more closely tied so they cant be mismatched
+        culled_draw_commands.sort_unstable_by(|a, b| {
+            match (
+                a.renderable.needs_alpha_blending(),
+                b.renderable.needs_alpha_blending(),
+            ) {
+                (true, true) => Ordering::Equal,
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                (false, false) => Ordering::Equal,
+            }
+        });
 
         let surface_texture = self.context.surface.get_current_texture()?;
         let surface_view = surface_texture
@@ -764,6 +779,16 @@ pub enum Renderable {
     Model(scene::ModelNode),
     BiTreeNode(scene::BiTreeNode),
     VisualEffect(VisualEffectNodeRenderable),
+}
+
+impl Renderable {
+    pub fn needs_alpha_blending(&self) -> bool {
+        match self {
+            Renderable::Model(_) => false,
+            Renderable::BiTreeNode(_) => false,
+            Renderable::VisualEffect(_) => true,
+        }
+    }
 }
 
 pub enum RenderableBounds {

@@ -35,6 +35,8 @@ impl VisualEffectNode {
     }
 
     pub fn update(&mut self, dt: f32, transform: Mat4) {
+        let mut rng = rand::rng();
+
         for timer in self.emit_timers.iter_mut() {
             *timer += dt;
         }
@@ -87,18 +89,24 @@ impl VisualEffectNode {
                         emitter.position_offset_y.interpolate(self.animation_timer);
                     let position_offset_z =
                         emitter.position_offset_z.interpolate(self.animation_timer);
-                    let position_offset =
-                        Vec3::new(position_offset_x, position_offset_y, position_offset_z);
+                    // let position_offset =
+                    //     Vec3::new(position_offset_x, position_offset_y, position_offset_z);
 
                     let velocity_min = emitter.velocity_min.interpolate(self.animation_timer);
                     let velocity_max = emitter.velocity_max.interpolate(self.animation_timer);
                     let velocity_dist = emitter.velocity_dist.interpolate(self.animation_timer);
-                    let velocity = random_distribution(velocity_min, velocity_max, velocity_dist);
+
+                    let size_start_min = emitter.size_start_min.interpolate(self.animation_timer);
+                    let size_start_max = emitter.size_start_max.interpolate(self.animation_timer);
+                    let size_start_dist = emitter.size_start_dist.interpolate(self.animation_timer);
+
+                    let size_end_min = emitter.size_end_min.interpolate(self.animation_timer);
+                    let size_end_max = emitter.size_end_max.interpolate(self.animation_timer);
+                    let size_end_dist = emitter.size_end_dist.interpolate(self.animation_timer);
 
                     let lifetime_min = emitter.lifetime_min.interpolate(self.animation_timer);
                     let lifetime_max = emitter.lifetime_max.interpolate(self.animation_timer);
                     let lifetime_dist = emitter.lifetime_dist.interpolate(self.animation_timer);
-                    let lifetime = random_distribution(lifetime_min, lifetime_max, lifetime_dist);
 
                     if !matches!(emitter.spread_type, SpreadType::Arc) {
                         todo!("other spread types")
@@ -124,6 +132,15 @@ impl VisualEffectNode {
                         .interpolate(self.animation_timer);
 
                     for _ in 0..particles_to_emit {
+                        let size_start =
+                            random_distribution(size_start_min, size_start_max, size_start_dist);
+                        let size_end =
+                            random_distribution(size_end_min, size_end_max, size_end_dist);
+                        let lifetime =
+                            random_distribution(lifetime_min, lifetime_max, lifetime_dist);
+
+                        let velocity =
+                            random_distribution(velocity_min, velocity_max, velocity_dist);
                         let velocity = random_direction_in_arc(
                             rotation,
                             horizontal_angle_radians,
@@ -134,11 +151,22 @@ impl VisualEffectNode {
                         ) * velocity;
                         // TODO: handle relative velocity
 
+                        let position_offset_x =
+                            position_offset_x * (rng.random::<f32>() * 2.0 - 1.0);
+                        let position_offset_y =
+                            position_offset_y * (rng.random::<f32>() * 2.0 - 1.0);
+                        let position_offset_z =
+                            position_offset_z * (rng.random::<f32>() * 2.0 - 1.0);
+                        let position_offset =
+                            Vec3::new(position_offset_x, position_offset_y, position_offset_z);
+
                         let particle = Particle {
                             position: position + position_offset,
                             velocity,
                             lifetime,
                             lifetime_remaining: lifetime,
+                            size_start,
+                            size_end,
                             sprite: emitter.sprite,
                         };
 
@@ -162,10 +190,17 @@ impl VisualEffectNode {
         let instances = self
             .particles
             .iter()
-            .map(|particle| ParticleInstance {
-                position: particle.position,
-                lifetime: 1.0 - (particle.lifetime_remaining / particle.lifetime),
-                sprite: particle.sprite as u32,
+            .map(|particle| {
+                let lifetime = 1.0 - (particle.lifetime_remaining / particle.lifetime);
+                ParticleInstance {
+                    position: particle.position,
+                    lifetime,
+                    // seems like "size" refers to the distance from the center to a corner?
+                    // the particle vertices define a 1x1 quad,
+                    // but a "size" of 1 means a roughly 2x2 quad?
+                    size: lerp(particle.size_start, particle.size_end, lifetime) * 2.0,
+                    sprite: particle.sprite as u32,
+                }
             })
             .collect::<Vec<_>>();
 
@@ -211,6 +246,8 @@ pub struct Particle {
     pub velocity: Vec3,
     pub lifetime: f32,
     pub lifetime_remaining: f32,
+    pub size_start: f32,
+    pub size_end: f32,
     pub sprite: u8,
 }
 
@@ -233,9 +270,21 @@ pub struct VisualEffectNodeRenderable {
     pub instance_count: u32,
 }
 
+fn lerp(a: f32, b: f32, f: f32) -> f32 {
+    a + ((b - a) * f)
+}
+
 fn random_distribution(min: f32, max: f32, dist: f32) -> f32 {
     let base: f32 = rand::rng().random();
     base.powf(dist) * (max - min) + min
+}
+
+fn random_sign(negative_chance: f32) -> f32 {
+    if rand::rng().random::<f32>() <= negative_chance {
+        -1.0
+    } else {
+        1.0
+    }
 }
 
 fn random_direction_in_arc(

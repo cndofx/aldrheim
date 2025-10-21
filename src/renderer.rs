@@ -55,11 +55,16 @@ impl RenderContext {
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_limits: wgpu::Limits {
-                    max_push_constant_size: 128,
+                    max_push_constant_size: 64,
+                    max_binding_array_elements_per_shader_stage: 4,
                     ..wgpu::Limits::defaults()
                 },
                 required_features: wgpu::Features::TEXTURE_COMPRESSION_BC
-                    | wgpu::Features::PUSH_CONSTANTS,
+                    | wgpu::Features::PUSH_CONSTANTS
+                    | wgpu::Features::TEXTURE_BINDING_ARRAY
+                    // this one seems like a pretty modern feature... 
+                    // maybe revisit later if compatibility with older hardware is wanted?
+                    | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,

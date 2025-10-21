@@ -1,4 +1,4 @@
-use std::{path::Path, rc::Rc};
+use std::{num::NonZeroU32, path::Path, rc::Rc};
 
 use glam::{Mat4, Vec3};
 
@@ -77,37 +77,7 @@ impl ParticlesPipeline {
                                 view_dimension: wgpu::TextureViewDimension::D3,
                                 multisampled: false,
                             },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                view_dimension: wgpu::TextureViewDimension::D3,
-                                multisampled: false,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 3,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                view_dimension: wgpu::TextureViewDimension::D3,
-                                multisampled: false,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 4,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                view_dimension: wgpu::TextureViewDimension::D3,
-                                multisampled: false,
-                            },
-                            count: None,
+                            count: Some(NonZeroU32::new(4).unwrap()),
                         },
                     ],
                 });
@@ -124,19 +94,12 @@ impl ParticlesPipeline {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&texture_a.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&texture_b.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(&texture_c.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::TextureView(&texture_d.view),
+                        resource: wgpu::BindingResource::TextureViewArray(&[
+                            &texture_a.view,
+                            &texture_b.view,
+                            &texture_c.view,
+                            &texture_d.view,
+                        ]),
                     },
                 ],
             });

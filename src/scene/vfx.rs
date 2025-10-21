@@ -5,7 +5,7 @@ use rand::Rng;
 
 use crate::{
     asset_manager::vfx::{ParticleEmitter, SpreadType, VisualEffectAsset},
-    renderer::{DrawCommand, Renderable, Renderer, pipelines::particles::ParticleInstance},
+    renderer::{DrawCommand, RenderContext, Renderable, pipelines::particles::ParticleInstance},
 };
 
 pub struct VisualEffectNode {
@@ -139,6 +139,7 @@ impl VisualEffectNode {
                             velocity,
                             lifetime,
                             lifetime_remaining: lifetime,
+                            sprite: emitter.sprite,
                         };
 
                         self.particles.push(particle);
@@ -149,7 +150,11 @@ impl VisualEffectNode {
     }
 
     // TODO: i wanted to avoid passing the renderer to the scene's render methods, is it possible here?
-    pub fn render(&mut self, transform: Mat4, renderer: &Renderer) -> Option<DrawCommand> {
+    pub fn render(
+        &mut self,
+        transform: Mat4,
+        render_context: &RenderContext,
+    ) -> Option<DrawCommand> {
         if self.particles.is_empty() {
             return None;
         }
@@ -157,12 +162,10 @@ impl VisualEffectNode {
         let instances = self
             .particles
             .iter()
-            .map(|particle| {
-                let lifetime_ratio = particle.lifetime_remaining / particle.lifetime;
-                ParticleInstance {
-                    position: particle.position,
-                    color: Vec3::new(lifetime_ratio, 0.0, 0.0),
-                }
+            .map(|particle| ParticleInstance {
+                position: particle.position,
+                lifetime: 1.0 - (particle.lifetime_remaining / particle.lifetime),
+                sprite: particle.sprite as u32,
             })
             .collect::<Vec<_>>();
 
@@ -174,19 +177,21 @@ impl VisualEffectNode {
                 self.instance_buffer_capacity,
                 new_capacity
             );
-            let new_buffer = renderer.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("VisualEffectNode Instance Buffer"),
-                size: new_capacity * std::mem::size_of::<ParticleInstance>() as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+            let new_buffer = render_context
+                .device
+                .create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("VisualEffectNode Instance Buffer"),
+                    size: new_capacity * std::mem::size_of::<ParticleInstance>() as u64,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
             self.instance_buffer = Some(new_buffer);
             self.instance_buffer_capacity = new_capacity;
         }
 
         let instance_buffer = self.instance_buffer.as_ref().unwrap();
 
-        renderer
+        render_context
             .queue
             .write_buffer(instance_buffer, 0, bytemuck::cast_slice(&instances));
 
@@ -206,6 +211,7 @@ pub struct Particle {
     pub velocity: Vec3,
     pub lifetime: f32,
     pub lifetime_remaining: f32,
+    pub sprite: u8,
 }
 
 impl Particle {

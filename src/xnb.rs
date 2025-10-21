@@ -12,6 +12,7 @@ pub mod asset;
 pub use asset::bi_tree_model::{BiTree, BiTreeNode};
 pub use asset::model::Model;
 pub use asset::texture_2d::Texture2D;
+pub use asset::texture_3d::Texture3D;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {

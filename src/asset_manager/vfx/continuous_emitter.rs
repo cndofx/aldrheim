@@ -24,7 +24,7 @@ pub struct ContinuousEmitter {
     pub lifetime_max: VisualEffectProperty,
     pub lifetime_dist: VisualEffectProperty,
     pub particles_per_second: VisualEffectProperty,
-    pub particle: u8,
+    pub sprite: u8,
 }
 
 impl ContinuousEmitter {
@@ -210,7 +210,7 @@ impl ContinuousEmitter {
             lifetime_max,
             lifetime_dist,
             particles_per_second,
-            particle,
+            sprite: particle,
         })
     }
 }

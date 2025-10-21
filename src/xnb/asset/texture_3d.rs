@@ -2,7 +2,7 @@ use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::xnb::asset::texture_2d::PixelFormat;
+use crate::xnb::asset::texture_2d::{PixelFormat, bytes_per_row, rows_per_image};
 
 #[derive(Debug)]
 pub struct Texture3D {
@@ -36,5 +36,15 @@ impl Texture3D {
             depth,
             mips,
         })
+    }
+
+    pub fn bytes_per_row(&self, mip_index: usize) -> anyhow::Result<u32> {
+        let bytes = bytes_per_row(self.width, mip_index, self.format)?;
+        Ok(bytes)
+    }
+
+    pub fn rows_per_image(&self, mip_index: usize) -> anyhow::Result<u32> {
+        let rows = rows_per_image(self.height, mip_index, self.format)?;
+        Ok(rows)
     }
 }

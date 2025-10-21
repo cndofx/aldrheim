@@ -138,7 +138,7 @@ impl App {
     }
 
     fn grab_cursor(&mut self, grab: bool) -> anyhow::Result<()> {
-        let window = self.renderer.as_mut().unwrap().window.clone();
+        let window = self.renderer.as_mut().unwrap().context.window.clone();
 
         let mode = if grab {
             CursorGrabMode::Locked
@@ -165,7 +165,7 @@ impl ApplicationHandler for App {
         let window_attributes = window_attributes.with_name("cndofx.Aldrheim", "");
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        let renderer = pollster::block_on(Renderer::new(window)).unwrap();
+        let renderer = pollster::block_on(Renderer::new(window, &mut self.asset_manager)).unwrap();
         self.renderer = Some(renderer);
 
         if self.scene.is_none() {
@@ -195,7 +195,7 @@ impl ApplicationHandler for App {
 
                 let renderer = self.renderer.as_mut().unwrap();
                 let scene = self.scene.as_mut().unwrap();
-                let draws = scene.render(renderer);
+                let draws = scene.render(&renderer.context);
                 match renderer.render(&draws, &scene.camera) {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {

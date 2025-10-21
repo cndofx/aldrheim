@@ -10,7 +10,9 @@ use glam::{Mat4, Quat, Vec3};
 
 use crate::{
     asset_manager::vfx::VisualEffectAsset,
-    renderer::{Renderer, pipelines::render_deferred_effect::RenderDeferredEffectUniform},
+    renderer::{
+        RenderContext, Renderer, pipelines::render_deferred_effect::RenderDeferredEffectUniform,
+    },
     scene::{self, SceneNode, SceneNodeKind, vfx::VisualEffectNode},
     xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
@@ -25,7 +27,7 @@ pub struct AssetManager {
     // would disappear, even though the game is likely to need the goblin mesh
     // again. i'm thinking all meshes should be loaded during a loading screen,
     // and all unneeded meshes are dropped during that same loading screen
-    textures_2d: HashMap<PathBuf, Rc<Texture2DAsset>>,
+    textures: HashMap<PathBuf, Rc<TextureAsset>>,
     models: HashMap<PathBuf, Rc<ModelAsset>>,
 
     // visual effects are keyed by filename strings instead of full paths
@@ -45,7 +47,7 @@ impl AssetManager {
         Ok(AssetManager {
             magicka_path,
             visual_effects,
-            textures_2d: HashMap::new(),
+            textures: HashMap::new(),
             models: HashMap::new(),
         })
     }
@@ -57,28 +59,35 @@ impl AssetManager {
         Ok(string)
     }
 
-    pub fn load_texture_2d(
+    pub fn load_texture(
         &mut self,
         path: &Path,
         base: Option<&Path>,
-        renderer: &Renderer,
-    ) -> anyhow::Result<Rc<Texture2DAsset>> {
+        render_context: &RenderContext,
+    ) -> anyhow::Result<Rc<TextureAsset>> {
         let path = self.resolve_path(path, base, Some("xnb"))?;
-        if let Some(texture) = self.textures_2d.get(&path) {
+        if let Some(texture) = self.textures.get(&path) {
             return Ok(texture.clone());
         }
 
         let content = self.load_xnb_content(&path)?;
-        let XnbAsset::Texture2D(texture) = &content.primary_asset else {
-            anyhow::bail!("expected Texture2D at path {}", path.display());
+        let texture = match &content.primary_asset {
+            XnbAsset::Texture2D(texture) => {
+                let texture = render_context.load_texture_2d(texture)?;
+                log::debug!("loaded Texture2D from file {}", path.display());
+                Rc::new(texture)
+            }
+            XnbAsset::Texture3D(texture) => {
+                let texture = render_context.load_texture_3d(texture)?;
+                log::debug!("loaded Texture3D from file {}", path.display());
+                Rc::new(texture)
+            }
+            _ => {
+                anyhow::bail!("expected Texture2D or Texture3D at path {}", path.display());
+            }
         };
 
-        let texture = renderer.load_texture_2d(texture)?;
-        let texture = Rc::new(texture);
-
-        log::debug!("loaded Texture2D from file {}", path.display());
-
-        self.textures_2d.insert(path, texture.clone());
+        self.textures.insert(path, texture.clone());
 
         Ok(texture)
     }
@@ -105,10 +114,10 @@ impl AssetManager {
             );
         };
 
-        let texture = self.load_texture_2d(
+        let texture = self.load_texture(
             &fix_xnb_path(&effect.material_0.diffuse_texture),
             Some(&path),
-            renderer,
+            &renderer.context,
         )?;
 
         let model = renderer.load_model(model, texture)?;
@@ -160,10 +169,10 @@ impl AssetManager {
             // println!("\n\n\n");
 
             let diffuse_texture_0 = if effect.material_0.diffuse_texture.len() > 0 {
-                Some(self.load_texture_2d(
+                Some(self.load_texture(
                     &fix_xnb_path(&effect.material_0.diffuse_texture),
                     Some(&path),
-                    renderer,
+                    &renderer.context,
                 )?)
             } else {
                 None
@@ -171,10 +180,10 @@ impl AssetManager {
 
             let diffuse_texture_1 = if let Some(material_1) = &effect.material_1 {
                 if material_1.diffuse_texture.len() > 0 {
-                    Some(self.load_texture_2d(
+                    Some(self.load_texture(
                         &fix_xnb_path(&material_1.diffuse_texture),
                         Some(&path),
-                        renderer,
+                        &renderer.context,
                     )?)
                 } else {
                     None
@@ -312,7 +321,7 @@ impl AssetManager {
     }
 }
 
-pub struct Texture2DAsset {
+pub struct TextureAsset {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
 }
@@ -328,7 +337,7 @@ pub struct ModelAsset {
     pub index_count: u32,
     pub start_index: u32,
     pub base_vertex: u32,
-    pub texture: Rc<Texture2DAsset>,
+    pub texture: Rc<TextureAsset>,
 }
 
 pub struct BiTreeAsset {
@@ -340,8 +349,8 @@ pub struct BiTreeAsset {
     pub index_buffer: wgpu::Buffer,
     pub index_format: wgpu::IndexFormat,
     pub texture_bind_group: wgpu::BindGroup,
-    pub diffuse_texture_0: Option<Rc<Texture2DAsset>>,
-    pub diffuse_texture_1: Option<Rc<Texture2DAsset>>,
+    pub diffuse_texture_0: Option<Rc<TextureAsset>>,
+    pub diffuse_texture_1: Option<Rc<TextureAsset>>,
 }
 
 fn load_level_model_bitree_node_recursive(

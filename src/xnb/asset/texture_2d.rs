@@ -36,19 +36,13 @@ impl Texture2D {
     }
 
     pub fn bytes_per_row(&self, mip_index: usize) -> anyhow::Result<u32> {
-        let block_dim = self.format.block_dim();
-        let block_size = self.format.block_size();
-        let mip_width = self.width.div_ceil(2u32.pow(mip_index as u32));
-        let blocks_x = mip_width.div_ceil(block_dim);
-        let bytes_per_row = blocks_x * block_size;
-        Ok(bytes_per_row)
+        let bytes = bytes_per_row(self.width, mip_index, self.format)?;
+        Ok(bytes)
     }
 
     pub fn rows_per_image(&self, mip_index: usize) -> anyhow::Result<u32> {
-        let block_dim = self.format.block_dim();
-        let mip_height = self.height.div_ceil(2u32.pow(mip_index as u32));
-        let blocks_y = mip_height.div_ceil(block_dim);
-        Ok(blocks_y)
+        let rows = rows_per_image(self.height, mip_index, self.format)?;
+        Ok(rows)
     }
 
     /// returns bgra8 pixels
@@ -108,6 +102,22 @@ pub fn bgra8_to_rgba8(bgra8: &[u8]) -> Vec<u8> {
     }
 
     rgba8
+}
+
+pub fn bytes_per_row(width: u32, mip_index: usize, format: PixelFormat) -> anyhow::Result<u32> {
+    let block_dim = format.block_dim();
+    let block_size = format.block_size();
+    let mip_width = width.div_ceil(2u32.pow(mip_index as u32));
+    let blocks_x = mip_width.div_ceil(block_dim);
+    let bytes_per_row = blocks_x * block_size;
+    Ok(bytes_per_row)
+}
+
+pub fn rows_per_image(height: u32, mip_index: usize, format: PixelFormat) -> anyhow::Result<u32> {
+    let block_dim = format.block_dim();
+    let mip_height = height.div_ceil(2u32.pow(mip_index as u32));
+    let blocks_y = mip_height.div_ceil(block_dim);
+    Ok(blocks_y)
 }
 
 #[repr(u32)]

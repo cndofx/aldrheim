@@ -11,6 +11,8 @@ pub struct ContinuousEmitter {
     pub spread_arc_vertical_angle_degrees_min: VisualEffectProperty,
     pub spread_arc_vertical_angle_degrees_max: VisualEffectProperty,
     pub spread_arc_vertical_angle_dist: VisualEffectProperty,
+    pub spread_cone_angle_degrees: VisualEffectProperty,
+    pub spread_cone_angle_dist: VisualEffectProperty,
     pub position_x: VisualEffectProperty,
     pub position_y: VisualEffectProperty,
     pub position_z: VisualEffectProperty,
@@ -50,6 +52,8 @@ impl ContinuousEmitter {
         let mut spread_arc_vertical_angle_degrees_min: Option<VisualEffectProperty> = None;
         let mut spread_arc_vertical_angle_degrees_max: Option<VisualEffectProperty> = None;
         let mut spread_arc_vertical_angle_dist: Option<VisualEffectProperty> = None;
+        let mut spread_cone_angle_degrees: Option<VisualEffectProperty> = None;
+        let mut spread_cone_angle_dist: Option<VisualEffectProperty> = None;
         let mut position_x: Option<VisualEffectProperty> = None;
         let mut position_y: Option<VisualEffectProperty> = None;
         let mut position_z: Option<VisualEffectProperty> = None;
@@ -121,6 +125,14 @@ impl ContinuousEmitter {
                 }
                 "SpreadArcVerticalDistribution" => {
                     spread_arc_vertical_angle_dist =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SpreadConeAngle" => {
+                    spread_cone_angle_degrees =
+                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                }
+                "SpreadConeDistribution" => {
+                    spread_cone_angle_dist =
                         Some(VisualEffectProperty::read(child, keyframes_per_second)?);
                 }
                 "PositionX" => {
@@ -237,6 +249,10 @@ impl ContinuousEmitter {
             spread_arc_vertical_angle_degrees_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let spread_arc_vertical_angle_dist =
             spread_arc_vertical_angle_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let spread_cone_angle_degrees =
+            spread_cone_angle_degrees.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let spread_cone_angle_dist =
+            spread_cone_angle_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
         let position_x = position_x.unwrap_or(VisualEffectProperty::Constant(0.0));
         let position_y = position_y.unwrap_or(VisualEffectProperty::Constant(0.0));
         let position_z = position_z.unwrap_or(VisualEffectProperty::Constant(0.0));
@@ -274,6 +290,8 @@ impl ContinuousEmitter {
             spread_arc_vertical_angle_degrees_min,
             spread_arc_vertical_angle_degrees_max,
             spread_arc_vertical_angle_dist,
+            spread_cone_angle_degrees,
+            spread_cone_angle_dist,
             position_x,
             position_y,
             position_z,

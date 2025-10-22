@@ -127,27 +127,31 @@ impl VisualEffectNode {
                     let lifetime_max = emitter.lifetime_max.interpolate(self.animation_timer);
                     let lifetime_dist = emitter.lifetime_dist.interpolate(self.animation_timer);
 
-                    if !matches!(emitter.spread_type, SpreadType::Arc) {
-                        todo!("other spread types")
-                    }
-
-                    let horizontal_angle_radians = emitter
+                    let spread_arc_horizontal_angle_radians = emitter
                         .spread_arc_horizontal_angle_degrees
                         .interpolate(self.animation_timer)
                         .to_radians();
-                    let horizontal_angle_dist = emitter
+                    let spread_arc_horizontal_angle_dist = emitter
                         .spread_arc_horizontal_angle_dist
                         .interpolate(self.animation_timer);
-                    let vertical_angle_radians_min = emitter
+                    let spread_arc_vertical_angle_radians_min = emitter
                         .spread_arc_vertical_angle_degrees_min
                         .interpolate(self.animation_timer)
                         .to_radians();
-                    let vertical_angle_radians_max = emitter
+                    let spread_arc_vertical_angle_radians_max = emitter
                         .spread_arc_vertical_angle_degrees_max
                         .interpolate(self.animation_timer)
                         .to_radians();
-                    let vertical_angle_dist = emitter
+                    let spread_arc_vertical_angle_dist = emitter
                         .spread_arc_vertical_angle_dist
+                        .interpolate(self.animation_timer);
+
+                    let spread_cone_angle_radians = emitter
+                        .spread_cone_angle_degrees
+                        .interpolate(self.animation_timer)
+                        .to_radians();
+                    let spread_cone_angle_dist = emitter
+                        .spread_cone_angle_dist
                         .interpolate(self.animation_timer);
 
                     for _ in 0..particles_to_emit {
@@ -160,14 +164,23 @@ impl VisualEffectNode {
 
                         let velocity =
                             random_distribution(velocity_min, velocity_max, velocity_dist);
-                        let velocity = random_direction_in_arc(
-                            rotation,
-                            horizontal_angle_radians,
-                            horizontal_angle_dist,
-                            vertical_angle_radians_min,
-                            vertical_angle_radians_max,
-                            vertical_angle_dist,
-                        ) * velocity;
+                        let velocity = match emitter.spread_type {
+                            SpreadType::Arc => {
+                                random_direction_in_arc(
+                                    rotation,
+                                    spread_arc_horizontal_angle_radians,
+                                    spread_arc_horizontal_angle_dist,
+                                    spread_arc_vertical_angle_radians_min,
+                                    spread_arc_vertical_angle_radians_max,
+                                    spread_arc_vertical_angle_dist,
+                                ) * velocity
+                            }
+                            SpreadType::Cone => random_direction_in_cone(
+                                rotation,
+                                spread_cone_angle_radians,
+                                spread_cone_angle_dist,
+                            ),
+                        };
                         // TODO: handle relative velocity
 
                         let rotation_radians =
@@ -209,7 +222,6 @@ impl VisualEffectNode {
         }
     }
 
-    // TODO: i wanted to avoid passing the renderer to the scene's render methods, is it possible here?
     pub fn render(
         &mut self,
         transform: Mat4,
@@ -218,6 +230,10 @@ impl VisualEffectNode {
         if self.particles.is_empty() {
             return None;
         }
+
+        // TODO: rotation breaks the billboard effect, what is the correct way to handle that?
+        let translation = transform.transform_point3(Vec3::ZERO);
+        let transform = Mat4::from_translation(translation);
 
         let instances = self
             .particles
@@ -350,5 +366,19 @@ fn random_direction_in_arc(
     let y = v_angle.sin();
     let z = -h_angle.cos() * v_angle.cos();
 
-    orientation * Vec3::new(x, y, z)
+    (orientation * Vec3::new(x, y, z)).normalize()
+}
+
+fn random_direction_in_cone(orientation: Quat, angle_radians: f32, angle_dist: f32) -> Vec3 {
+    let base = rand::rng().random::<f32>();
+    let cos_theta = base.powf(angle_dist) * (angle_radians / PI) * 2.0 - 1.0;
+    let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
+
+    let azimuth = rand::rng().random::<f32>() * TAU;
+
+    let x = sin_theta * azimuth.cos();
+    let y = sin_theta * azimuth.sin();
+    let z = cos_theta;
+
+    (orientation * Vec3::new(x, y, z)).normalize()
 }

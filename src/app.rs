@@ -261,8 +261,8 @@ struct InputState {
 // - ch_volcano_hideout.xnb (needs LavaEffect)
 
 fn load_scene(asset_manager: &mut AssetManager) -> anyhow::Result<Scene> {
-    // let level_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
-    let level_path = Path::new("Content/Levels/Challenges/chs_havindr_arena.xml");
+    let level_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
+    // let level_path = Path::new("Content/Levels/Challenges/chs_havindr_arena.xml");
 
     let scene = Scene::load_level(level_path, None, asset_manager)?;
 

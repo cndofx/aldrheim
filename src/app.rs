@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
@@ -18,12 +19,14 @@ use winit::platform::wayland::WindowAttributesExtWayland;
 
 use crate::{
     asset_manager::AssetManager,
-    renderer::{Renderer, camera::Camera},
+    renderer::{RenderContext, Renderer, camera::Camera},
     scene::Scene,
 };
 
 pub struct App {
-    asset_manager: AssetManager,
+    magicka_path: PathBuf,
+
+    asset_manager: Option<AssetManager>,
     renderer: Option<Renderer>,
     scene: Option<Scene>,
 
@@ -35,10 +38,10 @@ pub struct App {
 
 impl App {
     pub fn new(magicka_path: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        let asset_manager = AssetManager::new(magicka_path)?;
-
         let app = App {
-            asset_manager,
+            magicka_path: magicka_path.into(),
+
+            asset_manager: None,
             renderer: None,
             scene: None,
 
@@ -138,7 +141,7 @@ impl App {
     }
 
     fn grab_cursor(&mut self, grab: bool) -> anyhow::Result<()> {
-        let window = self.renderer.as_mut().unwrap().context.window.clone();
+        let window = self.renderer.as_mut().unwrap().window.clone();
 
         let mode = if grab {
             CursorGrabMode::Locked
@@ -164,14 +167,28 @@ impl ApplicationHandler for App {
         #[cfg(target_os = "linux")]
         let window_attributes = window_attributes.with_name("cndofx.Aldrheim", "");
 
+        // TODO: handle these errors properly instead of unwrapping
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        let renderer = pollster::block_on(Renderer::new(window, &mut self.asset_manager)).unwrap();
+        let (render_context, surface, surface_config) =
+            pollster::block_on(RenderContext::new(window.clone())).unwrap();
+        let render_context = Rc::new(render_context);
+        let mut asset_manager =
+            AssetManager::new(&self.magicka_path, render_context.clone()).unwrap();
+        let renderer = Renderer::new(
+            render_context,
+            window,
+            surface,
+            surface_config,
+            &mut asset_manager,
+        )
+        .unwrap();
+
         self.renderer = Some(renderer);
+        self.asset_manager = Some(asset_manager);
 
         if self.scene.is_none() {
-            let renderer = self.renderer.as_ref().unwrap();
-            let mut scene = load_scene(&mut self.asset_manager, renderer).unwrap();
-            scene.camera.look_at(Vec3::ZERO);
+            let asset_manager = self.asset_manager.as_mut().unwrap();
+            let scene = load_scene(asset_manager).unwrap();
             self.scene = Some(scene);
         }
 
@@ -243,11 +260,11 @@ struct InputState {
 // TODO: NOT YET LOADING LEVELS:
 // - ch_volcano_hideout.xnb (needs LavaEffect)
 
-fn load_scene(asset_manager: &mut AssetManager, renderer: &Renderer) -> anyhow::Result<Scene> {
+fn load_scene(asset_manager: &mut AssetManager) -> anyhow::Result<Scene> {
     // let level_path = Path::new("Content/Levels/WizardCastle/wc_s4.xml");
     let level_path = Path::new("Content/Levels/Challenges/chs_havindr_arena.xml");
 
-    let scene = Scene::load_level(level_path, None, asset_manager, renderer)?;
+    let scene = Scene::load_level(level_path, None, asset_manager)?;
 
     Ok(scene)
 }

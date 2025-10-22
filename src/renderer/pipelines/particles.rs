@@ -17,45 +17,18 @@ pub struct ParticlesPipeline {
 }
 
 impl ParticlesPipeline {
-    pub fn new(
-        context: &RenderContext,
-        camera_uniform_bind_group_layout: &wgpu::BindGroupLayout,
-        asset_manager: &mut AssetManager,
-    ) -> anyhow::Result<Self> {
-        let texture_a = asset_manager.load_texture(
-            Path::new("Content/EffectTextures/ParticlesA.xnb"),
-            None,
-            context,
-        )?;
+    pub fn new(context: &RenderContext, asset_manager: &mut AssetManager) -> anyhow::Result<Self> {
+        let texture_a =
+            asset_manager.load_texture(Path::new("Content/EffectTextures/ParticlesA.xnb"), None)?;
 
-        let texture_b = asset_manager.load_texture(
-            Path::new("Content/EffectTextures/ParticlesB.xnb"),
-            None,
-            context,
-        )?;
+        let texture_b =
+            asset_manager.load_texture(Path::new("Content/EffectTextures/ParticlesB.xnb"), None)?;
 
-        let texture_c = asset_manager.load_texture(
-            Path::new("Content/EffectTextures/ParticlesC.xnb"),
-            None,
-            context,
-        )?;
+        let texture_c =
+            asset_manager.load_texture(Path::new("Content/EffectTextures/ParticlesC.xnb"), None)?;
 
-        let texture_d = asset_manager.load_texture(
-            Path::new("Content/EffectTextures/ParticlesD.xnb"),
-            None,
-            context,
-        )?;
-
-        let sampler = context.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Particle Textures Sampler"),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let texture_d =
+            asset_manager.load_texture(Path::new("Content/EffectTextures/ParticlesD.xnb"), None)?;
 
         let textures_bind_group_layout =
             context
@@ -90,7 +63,7 @@ impl ParticlesPipeline {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
+                        resource: wgpu::BindingResource::Sampler(&context.linear_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
@@ -114,7 +87,7 @@ impl ParticlesPipeline {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
                     bind_group_layouts: &[
-                        &camera_uniform_bind_group_layout,
+                        &context.uniform_buffer_bind_group_layout,
                         &textures_bind_group_layout,
                     ],
                     push_constant_ranges: &[wgpu::PushConstantRange {
@@ -138,7 +111,7 @@ impl ParticlesPipeline {
                     module: &shader,
                     entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: context.surface_config.format,
+                        format: context.surface_format,
                         // TODO: not all particles use additive blending?
                         blend: Some(wgpu::BlendState {
                             color: wgpu::BlendComponent {

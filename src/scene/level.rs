@@ -2,7 +2,7 @@ use std::path::Path;
 
 use roxmltree::Document;
 
-use crate::{asset_manager::AssetManager, renderer::Renderer, scene::Scene};
+use crate::{asset_manager::AssetManager, scene::Scene};
 
 impl Scene {
     // TODO: passing renderer here feels bad
@@ -10,7 +10,6 @@ impl Scene {
         xml_path: &Path,
         base_path: Option<&Path>,
         asset_manager: &mut AssetManager,
-        renderer: &Renderer,
     ) -> anyhow::Result<Self> {
         let xml = asset_manager.read_to_string(xml_path, base_path)?;
         let doc = Document::parse(&xml)?;
@@ -43,8 +42,7 @@ impl Scene {
             anyhow::bail!("xml does not have a <Model> node");
         };
 
-        let model_node =
-            asset_manager.load_level_model(Path::new(model_path), Some(xml_path), renderer)?;
+        let model_node = asset_manager.load_level_model(Path::new(model_path), Some(xml_path))?;
 
         let mut scene = Scene::new();
 

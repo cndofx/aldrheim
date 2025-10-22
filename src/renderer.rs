@@ -1,39 +1,39 @@
 use std::{cmp::Ordering, rc::Rc, sync::Arc};
 
 use glam::Mat4;
-use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
-    asset_manager::{AssetManager, BiTreeAsset, ModelAsset, TextureAsset},
+    asset_manager::AssetManager,
     renderer::{
         camera::{Camera, Frustum},
         pipelines::{
-            particles::ParticlesPipeline,
-            render_deferred_effect::{RenderDeferredEffectPipeline, RenderDeferredEffectUniform},
+            particles::ParticlesPipeline, render_deferred_effect::RenderDeferredEffectPipeline,
         },
     },
     scene::{self, vfx::VisualEffectNodeRenderable},
-    xnb::{
-        self,
-        asset::model::{BoundingBox, BoundingSphere},
-    },
+    xnb::asset::model::{BoundingBox, BoundingSphere},
 };
 
 pub mod camera;
 pub mod pipelines;
 
 pub struct RenderContext {
-    surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
-    is_surface_configured: bool,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    pub window: Arc<Window>,
+    pub surface_format: wgpu::TextureFormat,
+    pub linear_sampler: wgpu::Sampler,
+    pub placeholder_texture_view: wgpu::TextureView,
+
+    pub vertex_storage_buffer_bind_group_layout: wgpu::BindGroupLayout,
+    pub uniform_buffer_bind_group_layout: wgpu::BindGroupLayout,
+    pub texture_2d_2x_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl RenderContext {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+    pub async fn new(
+        window: Arc<Window>,
+    ) -> anyhow::Result<(Self, wgpu::Surface<'static>, wgpu::SurfaceConfiguration)> {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -89,199 +89,79 @@ impl RenderContext {
             view_formats: Vec::new(),
         };
 
-        Ok(RenderContext {
-            surface,
-            surface_config,
-            is_surface_configured: false,
-            device,
-            queue,
-            window,
-        })
-    }
-
-    pub fn load_texture_2d(&self, texture: &xnb::Texture2D) -> anyhow::Result<TextureAsset> {
-        let texture_format = texture.format.to_wgpu();
-
-        let texture_size = wgpu::Extent3d {
-            width: texture.width,
-            height: texture.height,
-            depth_or_array_layers: 1,
-        };
-
-        let wgpu_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Texture 2D"),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            size: texture_size,
-            format: texture_format,
-            dimension: wgpu::TextureDimension::D2,
-            mip_level_count: texture.mips.len() as u32,
-            sample_count: 1,
-            view_formats: &[],
-        });
-
-        for (i, mip) in texture.mips.iter().enumerate() {
-            // TODO: is this the correct thing to do here?
-            // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
-            let mip_size = wgpu::Extent3d {
-                width: (texture.width / 2u32.pow(i as u32)).max(texture.format.block_dim()),
-                height: (texture.height / 2u32.pow(i as u32)).max(texture.format.block_dim()),
-                depth_or_array_layers: 1,
-            };
-
-            self.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &wgpu_texture,
-                    mip_level: i as u32,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                mip,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(texture.bytes_per_row(i)?),
-                    rows_per_image: Some(texture.rows_per_image(i)?),
-                },
-                mip_size,
-            );
-        }
-
-        let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        Ok(TextureAsset {
-            texture: wgpu_texture,
-            view,
-        })
-    }
-
-    pub fn load_texture_3d(&self, texture: &xnb::Texture3D) -> anyhow::Result<TextureAsset> {
-        let texture_format = texture.format.to_wgpu();
-
-        let texture_size = wgpu::Extent3d {
-            width: texture.width,
-            height: texture.height,
-            depth_or_array_layers: texture.depth,
-        };
-
-        let wgpu_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Texture 3D"),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            size: texture_size,
-            format: texture_format,
-            dimension: wgpu::TextureDimension::D3,
-            mip_level_count: texture.mips.len() as u32,
-            sample_count: 1,
-            view_formats: &[],
-        });
-
-        for (i, mip) in texture.mips.iter().enumerate() {
-            // TODO: is this the correct thing to do here?
-            // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
-            let mip_size = wgpu::Extent3d {
-                width: (texture.width / 2u32.pow(i as u32)).max(texture.format.block_dim()),
-                height: (texture.height / 2u32.pow(i as u32)).max(texture.format.block_dim()),
-                depth_or_array_layers: (texture.depth / 2u32.pow(i as u32)).max(1),
-            };
-
-            self.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &wgpu_texture,
-                    mip_level: i as u32,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                mip,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(texture.bytes_per_row(i)?),
-                    rows_per_image: Some(texture.rows_per_image(i)?),
-                },
-                mip_size,
-            );
-        }
-
-        let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        Ok(TextureAsset {
-            texture: wgpu_texture,
-            view,
-        })
-    }
-}
-
-pub struct Renderer {
-    pub context: RenderContext,
-
-    camera_uniform_buffer: wgpu::Buffer,
-    camera_uniform_bind_group: wgpu::BindGroup,
-
-    depth_texture: wgpu::Texture,
-    placeholder_texture: wgpu::Texture,
-    placeholder_texture_view: wgpu::TextureView,
-
-    linear_sampler: wgpu::Sampler,
-
-    particles_pipeline: ParticlesPipeline,
-    render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
-}
-
-impl Renderer {
-    pub async fn new(
-        window: Arc<Window>,
-        asset_manager: &mut AssetManager,
-    ) -> anyhow::Result<Self> {
-        let context = RenderContext::new(window).await?;
-
-        let camera_uniform_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Camera Uniform Buffer"),
-            size: std::mem::size_of::<CameraUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let camera_uniform_bind_group_layout =
-            context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Camera Uniform Bind Group Layout"),
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-        let camera_uniform_bind_group =
-            context
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Camera Uniform Bind Group"),
-                    layout: &camera_uniform_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: camera_uniform_buffer.as_entire_binding(),
-                    }],
-                });
-
-        let particles_pipeline =
-            ParticlesPipeline::new(&context, &camera_uniform_bind_group_layout, asset_manager)?;
-        let render_deferred_effect_pipeline =
-            RenderDeferredEffectPipeline::new(&context, &camera_uniform_bind_group_layout)?;
-
-        let linear_sampler = context.device.create_sampler(&wgpu::SamplerDescriptor {
+        let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 
-        let depth_texture = create_depth_texture(&context.device, &context.surface_config);
+        let vertex_storage_buffer_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Vertex Buffer Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let uniform_buffer_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Uniform Buffer Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let texture_2d_2x_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture2D 2x Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         let placeholder_pixel = [0xFF, 0x00, 0xFF, 0xFF];
         let placeholder_texture_size = wgpu::Extent3d {
@@ -289,7 +169,7 @@ impl Renderer {
             height: 1,
             depth_or_array_layers: 1,
         };
-        let placeholder_texture = context.device.create_texture(&wgpu::TextureDescriptor {
+        let placeholder_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Placeholder Texture"),
             size: placeholder_texture_size,
             mip_level_count: 1,
@@ -301,7 +181,7 @@ impl Renderer {
         });
         let placeholder_texture_view =
             placeholder_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        context.queue.write_texture(
+        queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &placeholder_texture,
                 mip_level: 0,
@@ -317,16 +197,78 @@ impl Renderer {
             placeholder_texture_size,
         );
 
+        let ctx = RenderContext {
+            device,
+            queue,
+            surface_format,
+            linear_sampler,
+            placeholder_texture_view,
+            vertex_storage_buffer_bind_group_layout,
+            uniform_buffer_bind_group_layout,
+            texture_2d_2x_bind_group_layout,
+        };
+        Ok((ctx, surface, surface_config))
+    }
+}
+
+pub struct Renderer {
+    pub context: Rc<RenderContext>,
+    surface: wgpu::Surface<'static>,
+    surface_config: wgpu::SurfaceConfiguration,
+    is_surface_configured: bool,
+    pub window: Arc<Window>,
+
+    camera_uniform_buffer: wgpu::Buffer,
+    camera_uniform_bind_group: wgpu::BindGroup,
+
+    depth_texture: wgpu::Texture,
+
+    particles_pipeline: ParticlesPipeline,
+    render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
+}
+
+impl Renderer {
+    pub fn new(
+        context: Rc<RenderContext>,
+        window: Arc<Window>,
+        surface: wgpu::Surface<'static>,
+        surface_config: wgpu::SurfaceConfiguration,
+        asset_manager: &mut AssetManager,
+    ) -> anyhow::Result<Self> {
+        let camera_uniform_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Camera Uniform Buffer"),
+            size: std::mem::size_of::<CameraUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let camera_uniform_bind_group =
+            context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Camera Uniform Bind Group"),
+                    layout: &context.uniform_buffer_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: camera_uniform_buffer.as_entire_binding(),
+                    }],
+                });
+
+        let particles_pipeline = ParticlesPipeline::new(&context, asset_manager)?;
+        let render_deferred_effect_pipeline = RenderDeferredEffectPipeline::new(&context)?;
+
+        let depth_texture = create_depth_texture(&context.device, &surface_config);
+
         let renderer = Renderer {
             context,
+            surface,
+            surface_config,
+            is_surface_configured: false,
+            window,
 
             camera_uniform_buffer,
             camera_uniform_bind_group,
 
-            linear_sampler,
             depth_texture,
-            placeholder_texture,
-            placeholder_texture_view,
 
             particles_pipeline,
             render_deferred_effect_pipeline,
@@ -356,13 +298,13 @@ impl Renderer {
         // - at load time, parse vertex data into multiple vertex buffers and only bind ones that are used (uncertain tradeoffs?)
         // maybe throw in zeux/meshoptimizer too if we're preprocessing vertex data anyway
 
-        self.context.window.request_redraw();
+        self.window.request_redraw();
 
-        if !self.context.is_surface_configured {
+        if !self.is_surface_configured {
             return Ok(());
         }
 
-        let window_size = self.context.window.inner_size();
+        let window_size = self.window.inner_size();
         let projection = Mat4::perspective_rh(
             camera.fov_y_radians,
             (window_size.width as f32) / (window_size.height as f32),
@@ -422,7 +364,7 @@ impl Renderer {
             }
         });
 
-        let surface_texture = self.context.surface.get_current_texture()?;
+        let surface_texture = self.surface.get_current_texture()?;
         let surface_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -546,7 +488,7 @@ impl Renderer {
 
         self.context.queue.submit([command_encoder.finish()]);
 
-        self.context.window.pre_present_notify();
+        self.window.pre_present_notify();
         surface_texture.present();
 
         Ok(())
@@ -557,216 +499,18 @@ impl Renderer {
             return;
         }
 
-        self.context.surface_config.width = width;
-        self.context.surface_config.height = height;
-        self.context
-            .surface
-            .configure(&self.context.device, &self.context.surface_config);
-        self.context.is_surface_configured = true;
+        self.surface_config.width = width;
+        self.surface_config.height = height;
+        self.surface
+            .configure(&self.context.device, &self.surface_config);
+        self.is_surface_configured = true;
 
-        self.depth_texture =
-            create_depth_texture(&self.context.device, &self.context.surface_config);
+        self.depth_texture = create_depth_texture(&self.context.device, &self.surface_config);
     }
 
     pub fn reconfigure_surface(&mut self) {
-        let size = self.context.window.inner_size();
+        let size = self.window.inner_size();
         self.resize(size.width, size.height);
-    }
-
-    pub fn load_bitree(
-        &self,
-        tree: &xnb::BiTree,
-        diffuse_texture_0: Option<Rc<TextureAsset>>,
-        diffuse_texture_1: Option<Rc<TextureAsset>>,
-        effect_uniform: RenderDeferredEffectUniform,
-    ) -> anyhow::Result<BiTreeAsset> {
-        let index_format = tree.index_buffer.wgpu_format();
-
-        let vertex_layout_uniform_buffer =
-            self.context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Effect Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[effect_uniform]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
-        let vertex_layout_uniform_bind_group =
-            self.context
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Effect Uniform Bind Group"),
-                    layout: &self
-                        .render_deferred_effect_pipeline
-                        .vertex_layout_uniform_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(
-                            vertex_layout_uniform_buffer.as_entire_buffer_binding(),
-                        ),
-                    }],
-                });
-
-        let vertex_buffer =
-            self.context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: &tree.vertex_buffer.data,
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
-
-        let index_buffer =
-            self.context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Index Buffer"),
-                    contents: &tree.index_buffer.data,
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-
-        let vertex_buffer_bind_group =
-            self.context
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Vertex Buffer Bind Group"),
-                    layout: &self
-                        .render_deferred_effect_pipeline
-                        .vertex_buffer_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(
-                            vertex_buffer.as_entire_buffer_binding(),
-                        ),
-                    }],
-                });
-
-        let texture_bind_group =
-            self.context
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Texture Bind Group"),
-                    layout: &self
-                        .render_deferred_effect_pipeline
-                        .texture_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(
-                                if let Some(diffuse_0) = &diffuse_texture_0 {
-                                    &diffuse_0.view
-                                } else {
-                                    &self.placeholder_texture_view
-                                },
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(
-                                if let Some(diffuse_1) = &diffuse_texture_1 {
-                                    &diffuse_1.view
-                                } else {
-                                    &self.placeholder_texture_view
-                                },
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                        },
-                    ],
-                });
-
-        Ok(BiTreeAsset {
-            visible: tree.visible,
-            vertex_buffer,
-            vertex_buffer_bind_group,
-            vertex_layout_uniform_buffer,
-            vertex_layout_uniform_bind_group,
-            index_buffer,
-            index_format,
-            texture_bind_group,
-            diffuse_texture_0,
-            diffuse_texture_1,
-        })
-    }
-
-    pub fn load_model(
-        &self,
-        model: &xnb::Model,
-        texture: Rc<TextureAsset>,
-    ) -> anyhow::Result<ModelAsset> {
-        todo!()
-
-        // let mesh0 = &model.meshes[0];
-        // let part0 = &mesh0.parts[0];
-        // let vertex_decl = &model.vertex_decls[part0.vertex_decl_index as usize];
-        // let index_format = mesh0.index_buffer.wgpu_format();
-        // let index_count = part0.primitive_count * 3;
-        // let start_index = part0.start_index;
-        // let base_vertex = part0.base_vertex;
-
-        // let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(vertex_decl)?;
-        // let vertex_layout_uniform_buffer =
-        //     self.device
-        //         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //             label: Some("Vertex Layout Uniform Buffer"),
-        //             contents: bytemuck::cast_slice(&[vertex_layout_uniform]),
-        //             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        //         });
-        // let vertex_layout_uniform_bind_group =
-        //     self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //         label: Some("Vertex Layout Uniform Bind Group"),
-        //         layout: &self
-        //             .render_deferred_effect_pipeline
-        //             .vertex_layout_uniform_bind_group_layout,
-        //         entries: &[wgpu::BindGroupEntry {
-        //             binding: 0,
-        //             resource: wgpu::BindingResource::Buffer(
-        //                 vertex_layout_uniform_buffer.as_entire_buffer_binding(),
-        //             ),
-        //         }],
-        //     });
-
-        // let vertex_buffer = self
-        //     .device
-        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //         label: Some("Vertex Buffer"),
-        //         contents: &mesh0.vertex_buffer.data,
-        //         usage: wgpu::BufferUsages::STORAGE,
-        //     });
-
-        // let index_buffer = self
-        //     .device
-        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //         label: Some("Index Buffer"),
-        //         contents: &mesh0.index_buffer.data,
-        //         usage: wgpu::BufferUsages::INDEX,
-        //     });
-
-        // let vertex_buffer_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     label: Some("Vertex Buffer Bind Group"),
-        //     layout: &self
-        //         .render_deferred_effect_pipeline
-        //         .vertex_buffer_bind_group_layout,
-        //     entries: &[wgpu::BindGroupEntry {
-        //         binding: 0,
-        //         resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
-        //     }],
-        // });
-
-        // Ok(ModelAsset {
-        //     pipeline: self.render_deferred_effect_pipeline.pipeline.clone(),
-        //     vertex_buffer,
-        //     vertex_buffer_bind_group,
-        //     vertex_layout_uniform_buffer,
-        //     vertex_layout_uniform_bind_group,
-        //     index_buffer,
-        //     index_format,
-        //     index_count,
-        //     start_index,
-        //     base_vertex,
-        //     texture,
-        // })
     }
 }
 

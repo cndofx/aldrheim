@@ -9,86 +9,11 @@ use crate::{
 };
 
 pub struct RenderDeferredEffectPipeline {
-    pub vertex_buffer_bind_group_layout: wgpu::BindGroupLayout,
-    pub vertex_layout_uniform_bind_group_layout: wgpu::BindGroupLayout,
-    pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pub pipeline: wgpu::RenderPipeline,
 }
 
 impl RenderDeferredEffectPipeline {
-    pub fn new(
-        context: &RenderContext,
-        camera_uniform_bind_group_layout: &wgpu::BindGroupLayout,
-    ) -> anyhow::Result<Self> {
-        let vertex_buffer_bind_group_layout =
-            context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Render Deferred Effect Vertex Buffer Bind Group Layout"),
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-
-        let effect_properties_uniform_bind_group_layout =
-            context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Render Deferred Effect Properties Uniform Bind Group Layout"),
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-
-        let texture_bind_group_layout =
-            context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Render Deferred Effect Texture Bind Group Layout"),
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                multisampled: false,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                multisampled: false,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                    ],
-                });
-
+    pub fn new(context: &RenderContext) -> anyhow::Result<Self> {
         let shader = context.device.create_shader_module(wgpu::include_wgsl!(
             "../../shaders/render_deferred_effect.wgsl"
         ));
@@ -99,14 +24,18 @@ impl RenderDeferredEffectPipeline {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
                     bind_group_layouts: &[
-                        &camera_uniform_bind_group_layout,
-                        &vertex_buffer_bind_group_layout,
-                        &effect_properties_uniform_bind_group_layout,
-                        &texture_bind_group_layout,
+                        // camera uniform
+                        &context.uniform_buffer_bind_group_layout,
+                        // vertex buffer
+                        &context.vertex_storage_buffer_bind_group_layout,
+                        // effect properties uniform
+                        &context.uniform_buffer_bind_group_layout,
+                        // effect textures
+                        &context.texture_2d_2x_bind_group_layout,
                     ],
                     push_constant_ranges: &[wgpu::PushConstantRange {
                         stages: wgpu::ShaderStages::VERTEX,
-                        range: 0..(size_of::<Mat4>() as u32), // mvp matrix
+                        range: 0..(size_of::<Mat4>() as u32), // model matrix
                     }],
                 });
 
@@ -125,7 +54,7 @@ impl RenderDeferredEffectPipeline {
                     module: &shader,
                     entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: context.surface_config.format,
+                        format: context.surface_format,
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::all(),
                     })],
@@ -152,12 +81,7 @@ impl RenderDeferredEffectPipeline {
                 cache: None,
             });
 
-        Ok(RenderDeferredEffectPipeline {
-            vertex_buffer_bind_group_layout,
-            vertex_layout_uniform_bind_group_layout: effect_properties_uniform_bind_group_layout,
-            texture_bind_group_layout,
-            pipeline,
-        })
+        Ok(RenderDeferredEffectPipeline { pipeline })
     }
 }
 

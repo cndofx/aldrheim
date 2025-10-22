@@ -7,20 +7,20 @@ use std::{
 
 use anyhow::Context;
 use glam::{Mat4, Quat, Vec3};
+use wgpu::util::DeviceExt;
 
 use crate::{
     asset_manager::vfx::VisualEffectAsset,
-    renderer::{
-        RenderContext, Renderer, pipelines::render_deferred_effect::RenderDeferredEffectUniform,
-    },
+    renderer::{RenderContext, pipelines::render_deferred_effect::RenderDeferredEffectUniform},
     scene::{self, SceneNode, SceneNodeKind, vfx::VisualEffectNode},
-    xnb::{BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
+    xnb::{self, BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
 
 pub mod vfx;
 
 pub struct AssetManager {
     magicka_path: PathBuf,
+    render_context: Rc<RenderContext>,
 
     // using `Rc` instead of `Weak` so that resources arent immediately dropped
     // when no longer used. if all the "goblin" enemies died, the goblin mesh
@@ -40,12 +40,16 @@ pub struct AssetManager {
 }
 
 impl AssetManager {
-    pub fn new(magicka_path: impl Into<PathBuf>) -> anyhow::Result<Self> {
+    pub fn new(
+        magicka_path: impl Into<PathBuf>,
+        render_context: Rc<RenderContext>,
+    ) -> anyhow::Result<Self> {
         let magicka_path = magicka_path.into();
         let visual_effects = preload_visual_effects(&magicka_path)?;
 
         Ok(AssetManager {
             magicka_path,
+            render_context,
             visual_effects,
             textures: HashMap::new(),
             models: HashMap::new(),
@@ -63,7 +67,6 @@ impl AssetManager {
         &mut self,
         path: &Path,
         base: Option<&Path>,
-        render_context: &RenderContext,
     ) -> anyhow::Result<Rc<TextureAsset>> {
         let path = self.resolve_path(path, base, Some("xnb"))?;
         if let Some(texture) = self.textures.get(&path) {
@@ -73,12 +76,12 @@ impl AssetManager {
         let content = self.load_xnb_content(&path)?;
         let texture = match &content.primary_asset {
             XnbAsset::Texture2D(texture) => {
-                let texture = render_context.load_texture_2d(texture)?;
+                let texture = self.load_texture_inner_2d(texture)?;
                 log::debug!("loaded Texture2D from file {}", path.display());
                 Rc::new(texture)
             }
             XnbAsset::Texture3D(texture) => {
-                let texture = render_context.load_texture_3d(texture)?;
+                let texture = self.load_texture_inner_3d(texture)?;
                 log::debug!("loaded Texture3D from file {}", path.display());
                 Rc::new(texture)
             }
@@ -92,49 +95,240 @@ impl AssetManager {
         Ok(texture)
     }
 
+    fn load_texture_inner_2d(&self, texture: &xnb::Texture2D) -> anyhow::Result<TextureAsset> {
+        let texture_format = texture.format.to_wgpu();
+
+        let texture_size = wgpu::Extent3d {
+            width: texture.width,
+            height: texture.height,
+            depth_or_array_layers: 1,
+        };
+
+        let wgpu_texture = self
+            .render_context
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Texture 2D"),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                size: texture_size,
+                format: texture_format,
+                dimension: wgpu::TextureDimension::D2,
+                mip_level_count: texture.mips.len() as u32,
+                sample_count: 1,
+                view_formats: &[],
+            });
+
+        for (i, mip) in texture.mips.iter().enumerate() {
+            // TODO: is this the correct thing to do here?
+            // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
+            let mip_size = wgpu::Extent3d {
+                width: (texture.width / 2u32.pow(i as u32)).max(texture.format.block_dim()),
+                height: (texture.height / 2u32.pow(i as u32)).max(texture.format.block_dim()),
+                depth_or_array_layers: 1,
+            };
+
+            self.render_context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &wgpu_texture,
+                    mip_level: i as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                mip,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(texture.bytes_per_row(i)?),
+                    rows_per_image: Some(texture.rows_per_image(i)?),
+                },
+                mip_size,
+            );
+        }
+
+        let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        Ok(TextureAsset {
+            texture: wgpu_texture,
+            view,
+        })
+    }
+
+    fn load_texture_inner_3d(&self, texture: &xnb::Texture3D) -> anyhow::Result<TextureAsset> {
+        let texture_format = texture.format.to_wgpu();
+
+        let texture_size = wgpu::Extent3d {
+            width: texture.width,
+            height: texture.height,
+            depth_or_array_layers: texture.depth,
+        };
+
+        let wgpu_texture = self
+            .render_context
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Texture 3D"),
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                size: texture_size,
+                format: texture_format,
+                dimension: wgpu::TextureDimension::D3,
+                mip_level_count: texture.mips.len() as u32,
+                sample_count: 1,
+                view_formats: &[],
+            });
+
+        for (i, mip) in texture.mips.iter().enumerate() {
+            // TODO: is this the correct thing to do here?
+            // wgpu validation doesnt like copying 2x2 pixel mips with 4x4 block size
+            let mip_size = wgpu::Extent3d {
+                width: (texture.width / 2u32.pow(i as u32)).max(texture.format.block_dim()),
+                height: (texture.height / 2u32.pow(i as u32)).max(texture.format.block_dim()),
+                depth_or_array_layers: (texture.depth / 2u32.pow(i as u32)).max(1),
+            };
+
+            self.render_context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &wgpu_texture,
+                    mip_level: i as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                mip,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(texture.bytes_per_row(i)?),
+                    rows_per_image: Some(texture.rows_per_image(i)?),
+                },
+                mip_size,
+            );
+        }
+
+        let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        Ok(TextureAsset {
+            texture: wgpu_texture,
+            view,
+        })
+    }
+
     pub fn load_model(
         &mut self,
         path: &Path,
         base: Option<&Path>,
-        renderer: &Renderer,
     ) -> anyhow::Result<Rc<ModelAsset>> {
-        let path = self.resolve_path(path, base, Some("xnb"))?;
-        if let Some(model) = self.models.get(&path) {
-            return Ok(model.clone());
-        }
+        todo!("load model");
+        // let path = self.resolve_path(path, base, Some("xnb"))?;
+        // if let Some(model) = self.models.get(&path) {
+        //     return Ok(model.clone());
+        // }
 
-        let model_content = self.load_xnb_content(&path)?;
-        let XnbAsset::Model(model) = &model_content.primary_asset else {
-            anyhow::bail!("expected Model at path {}", path.display());
-        };
-        let XnbAsset::RenderDeferredEffect(effect) = &model_content.shared_assets[0] else {
-            anyhow::bail!(
-                "expected RenderDeferredEffect at shared assets 0 at path {}",
-                path.display()
-            );
-        };
+        // let model_content = self.load_xnb_content(&path)?;
+        // let XnbAsset::Model(model) = &model_content.primary_asset else {
+        //     anyhow::bail!("expected Model at path {}", path.display());
+        // };
+        // let XnbAsset::RenderDeferredEffect(effect) = &model_content.shared_assets[0] else {
+        //     anyhow::bail!(
+        //         "expected RenderDeferredEffect at shared assets 0 at path {}",
+        //         path.display()
+        //     );
+        // };
 
-        let texture = self.load_texture(
-            &fix_xnb_path(&effect.material_0.diffuse_texture),
-            Some(&path),
-            &renderer.context,
-        )?;
+        // let texture = self.load_texture(
+        //     &fix_xnb_path(&effect.material_0.diffuse_texture),
+        //     Some(&path),
+        // )?;
 
-        let model = renderer.load_model(model, texture)?;
-        let model = Rc::new(model);
+        // let model = renderer.load_model(model, texture)?;
+        // let model = Rc::new(model);
 
-        log::debug!("loaded Model from file {}", path.display());
+        // log::debug!("loaded Model from file {}", path.display());
 
-        self.models.insert(path, model.clone());
+        // self.models.insert(path, model.clone());
 
-        Ok(model)
+        // Ok(model)
+    }
+
+    fn load_model_inner(
+        &self,
+        model: &xnb::Model,
+        texture: Rc<TextureAsset>,
+    ) -> anyhow::Result<ModelAsset> {
+        todo!()
+
+        // let mesh0 = &model.meshes[0];
+        // let part0 = &mesh0.parts[0];
+        // let vertex_decl = &model.vertex_decls[part0.vertex_decl_index as usize];
+        // let index_format = mesh0.index_buffer.wgpu_format();
+        // let index_count = part0.primitive_count * 3;
+        // let start_index = part0.start_index;
+        // let base_vertex = part0.base_vertex;
+
+        // let vertex_layout_uniform = VertexLayoutUniform::from_xnb_decl(vertex_decl)?;
+        // let vertex_layout_uniform_buffer =
+        //     self.device
+        //         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //             label: Some("Vertex Layout Uniform Buffer"),
+        //             contents: bytemuck::cast_slice(&[vertex_layout_uniform]),
+        //             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        //         });
+        // let vertex_layout_uniform_bind_group =
+        //     self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //         label: Some("Vertex Layout Uniform Bind Group"),
+        //         layout: &self
+        //             .render_deferred_effect_pipeline
+        //             .vertex_layout_uniform_bind_group_layout,
+        //         entries: &[wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: wgpu::BindingResource::Buffer(
+        //                 vertex_layout_uniform_buffer.as_entire_buffer_binding(),
+        //             ),
+        //         }],
+        //     });
+
+        // let vertex_buffer = self
+        //     .device
+        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("Vertex Buffer"),
+        //         contents: &mesh0.vertex_buffer.data,
+        //         usage: wgpu::BufferUsages::STORAGE,
+        //     });
+
+        // let index_buffer = self
+        //     .device
+        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //         label: Some("Index Buffer"),
+        //         contents: &mesh0.index_buffer.data,
+        //         usage: wgpu::BufferUsages::INDEX,
+        //     });
+
+        // let vertex_buffer_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     label: Some("Vertex Buffer Bind Group"),
+        //     layout: &self
+        //         .render_deferred_effect_pipeline
+        //         .vertex_buffer_bind_group_layout,
+        //     entries: &[wgpu::BindGroupEntry {
+        //         binding: 0,
+        //         resource: wgpu::BindingResource::Buffer(vertex_buffer.as_entire_buffer_binding()),
+        //     }],
+        // });
+
+        // Ok(ModelAsset {
+        //     pipeline: self.render_deferred_effect_pipeline.pipeline.clone(),
+        //     vertex_buffer,
+        //     vertex_buffer_bind_group,
+        //     vertex_layout_uniform_buffer,
+        //     vertex_layout_uniform_bind_group,
+        //     index_buffer,
+        //     index_format,
+        //     index_count,
+        //     start_index,
+        //     base_vertex,
+        //     texture,
+        // })
     }
 
     pub fn load_level_model(
         &mut self,
         path: &Path,
         base: Option<&Path>,
-        renderer: &Renderer,
     ) -> anyhow::Result<SceneNode> {
         let path = self.resolve_path(path, base, Some("xnb"))?;
 
@@ -165,37 +359,8 @@ impl AssetManager {
                     tree.effect.as_ref()
                 );
             };
-            // dbg!(&tree.vertex_decl, effect);
-            // println!("\n\n\n");
 
-            let diffuse_texture_0 = if effect.material_0.diffuse_texture.len() > 0 {
-                Some(self.load_texture(
-                    &fix_xnb_path(&effect.material_0.diffuse_texture),
-                    Some(&path),
-                    &renderer.context,
-                )?)
-            } else {
-                None
-            };
-
-            let diffuse_texture_1 = if let Some(material_1) = &effect.material_1 {
-                if material_1.diffuse_texture.len() > 0 {
-                    Some(self.load_texture(
-                        &fix_xnb_path(&material_1.diffuse_texture),
-                        Some(&path),
-                        &renderer.context,
-                    )?)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let effect_uniform = RenderDeferredEffectUniform::new(&effect, &tree.vertex_decl)?;
-
-            let asset =
-                renderer.load_bitree(tree, diffuse_texture_0, diffuse_texture_1, effect_uniform)?;
+            let asset = self.load_bitree(tree, effect, &path)?;
             load_level_model_bitree_node_recursive(&mut scene_node, &tree.node, Rc::new(asset))?;
         }
 
@@ -220,6 +385,139 @@ impl AssetManager {
         log::debug!("loaded LevelModel from file {}", path.display());
 
         Ok(scene_node)
+    }
+
+    fn load_bitree(
+        &mut self,
+        tree: &xnb::BiTree,
+        effect: &xnb::RenderDeferredEffect,
+        path: &Path,
+    ) -> anyhow::Result<BiTreeAsset> {
+        let diffuse_texture_0 = if effect.material_0.diffuse_texture.len() > 0 {
+            Some(self.load_texture(
+                &fix_xnb_path(&effect.material_0.diffuse_texture),
+                Some(path),
+            )?)
+        } else {
+            None
+        };
+
+        let diffuse_texture_1 = if let Some(material_1) = &effect.material_1 {
+            if material_1.diffuse_texture.len() > 0 {
+                Some(self.load_texture(&fix_xnb_path(&material_1.diffuse_texture), Some(path))?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let effect_uniform = RenderDeferredEffectUniform::new(&effect, &tree.vertex_decl)?;
+
+        let index_format = tree.index_buffer.wgpu_format();
+
+        let vertex_layout_uniform_buffer =
+            self.render_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Effect Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[effect_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+        let vertex_layout_uniform_bind_group =
+            self.render_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Effect Uniform Bind Group"),
+                    layout: &self.render_context.uniform_buffer_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(
+                            vertex_layout_uniform_buffer.as_entire_buffer_binding(),
+                        ),
+                    }],
+                });
+
+        let vertex_buffer =
+            self.render_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: &tree.vertex_buffer.data,
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
+
+        let index_buffer =
+            self.render_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Index Buffer"),
+                    contents: &tree.index_buffer.data,
+                    usage: wgpu::BufferUsages::INDEX,
+                });
+
+        let vertex_buffer_bind_group =
+            self.render_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Vertex Buffer Bind Group"),
+                    layout: &self.render_context.vertex_storage_buffer_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(
+                            vertex_buffer.as_entire_buffer_binding(),
+                        ),
+                    }],
+                });
+
+        let texture_bind_group =
+            self.render_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Texture Bind Group"),
+                    layout: &self.render_context.texture_2d_2x_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(
+                                if let Some(diffuse_0) = &diffuse_texture_0 {
+                                    &diffuse_0.view
+                                } else {
+                                    &self.render_context.placeholder_texture_view
+                                },
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(
+                                if let Some(diffuse_1) = &diffuse_texture_1 {
+                                    &diffuse_1.view
+                                } else {
+                                    &self.render_context.placeholder_texture_view
+                                },
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(
+                                &self.render_context.linear_sampler,
+                            ),
+                        },
+                    ],
+                });
+
+        Ok(BiTreeAsset {
+            visible: tree.visible,
+            vertex_buffer,
+            vertex_buffer_bind_group,
+            vertex_layout_uniform_buffer,
+            vertex_layout_uniform_bind_group,
+            index_buffer,
+            index_format,
+            texture_bind_group,
+            diffuse_texture_0,
+            diffuse_texture_1,
+        })
     }
 
     pub fn load_visual_effect(&self, name: &str) -> anyhow::Result<Rc<VisualEffectAsset>> {

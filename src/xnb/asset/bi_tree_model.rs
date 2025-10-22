@@ -79,7 +79,7 @@ impl BiTree {
         let effect = XnbAsset::read(reader, type_readers)?;
         // TODO: validate that it's actually an effect
 
-        let node = BiTreeNode::read(reader, type_readers)?;
+        let node = BiTreeNode::read(reader)?;
 
         Ok(BiTree {
             visible,
@@ -108,20 +108,20 @@ pub struct BiTreeNode {
 }
 
 impl BiTreeNode {
-    pub fn read(reader: &mut impl Read, type_readers: &[TypeReader]) -> anyhow::Result<Self> {
+    pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let primitive_count = reader.read_i32::<LittleEndian>()?;
         let start_index = reader.read_i32::<LittleEndian>()?;
         let bounding_box = BoundingBox::read(reader)?;
 
         let child_a = if reader.read_bool()? {
-            let node = BiTreeNode::read(reader, type_readers)?;
+            let node = BiTreeNode::read(reader)?;
             Some(Box::new(node))
         } else {
             None
         };
 
         let child_b = if reader.read_bool()? {
-            let node = BiTreeNode::read(reader, type_readers)?;
+            let node = BiTreeNode::read(reader)?;
             Some(Box::new(node))
         } else {
             None

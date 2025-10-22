@@ -44,7 +44,7 @@ impl VisualEffectNode {
             *timer += dt;
         }
 
-        self.animation_timer += dt as f32;
+        self.animation_timer += dt;
         if self.animation_timer >= self.effect.duration {
             self.animation_timer -= self.effect.duration;
         }
@@ -348,7 +348,7 @@ fn random_direction_in_arc(
 
     let x = h_angle.sin() * v_angle.cos();
     let y = v_angle.sin();
-    let z = (h_angle.cos() * -1.0) * v_angle.cos();
+    let z = -h_angle.cos() * v_angle.cos();
 
     orientation * Vec3::new(x, y, z)
 }

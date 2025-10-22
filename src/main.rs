@@ -179,7 +179,7 @@ fn dedup_pipelines(path: &str) -> anyhow::Result<()> {
             continue;
         }
 
-        if path.extension() != Some(&OsStr::new("xnb")) {
+        if path.extension() != Some(OsStr::new("xnb")) {
             println!("skipping non xnb file: {}", path.display());
             continue;
         }

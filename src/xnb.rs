@@ -149,7 +149,7 @@ impl Xnb {
     pub fn parse_content(&self) -> anyhow::Result<XnbContent> {
         let decompressed = self.decompress()?;
         let content = Xnb::parse_content_from(&decompressed)?;
-        return Ok(content);
+        Ok(content)
     }
 
     pub fn parse_content_from(decompressed: &[u8]) -> anyhow::Result<XnbContent> {

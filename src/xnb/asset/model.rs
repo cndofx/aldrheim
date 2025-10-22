@@ -103,10 +103,10 @@ impl BoneHierarchy {
             let child_ref = read_bone_ref(reader, num_bones)?;
             children_refs.push(child_ref);
         }
-        return Ok(BoneHierarchy {
+        Ok(BoneHierarchy {
             parent_ref,
             children_refs,
-        });
+        })
     }
 }
 

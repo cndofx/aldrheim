@@ -287,7 +287,7 @@ impl ContinuousEmitter {
             rotation_degrees_max,
             rotation_speed_degrees_min,
             rotation_speed_degrees_max,
-            rotation_ccw_chance: rotation_ccw_chance,
+            rotation_ccw_chance,
             size_start_min,
             size_start_max,
             size_start_dist,

@@ -83,7 +83,7 @@ impl App {
 
             let (forward, right, _) = scene.camera.forward_right_up();
 
-            let mut amount = self.camera_speed * (dt as f32);
+            let mut amount = self.camera_speed * dt;
             if self.camera_input_state.fast {
                 amount *= 4.0;
             }

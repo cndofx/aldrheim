@@ -393,7 +393,7 @@ impl AssetManager {
         effect: &xnb::RenderDeferredEffect,
         path: &Path,
     ) -> anyhow::Result<BiTreeAsset> {
-        let diffuse_texture_0 = if effect.material_0.diffuse_texture.len() > 0 {
+        let diffuse_texture_0 = if !effect.material_0.diffuse_texture.is_empty() {
             Some(self.load_texture(
                 &fix_xnb_path(&effect.material_0.diffuse_texture),
                 Some(path),
@@ -403,7 +403,7 @@ impl AssetManager {
         };
 
         let diffuse_texture_1 = if let Some(material_1) = &effect.material_1 {
-            if material_1.diffuse_texture.len() > 0 {
+            if !material_1.diffuse_texture.is_empty() {
                 Some(self.load_texture(&fix_xnb_path(&material_1.diffuse_texture), Some(path))?)
             } else {
                 None
@@ -412,7 +412,7 @@ impl AssetManager {
             None
         };
 
-        let effect_uniform = RenderDeferredEffectUniform::new(&effect, &tree.vertex_decl)?;
+        let effect_uniform = RenderDeferredEffectUniform::new(effect, &tree.vertex_decl)?;
 
         let index_format = tree.index_buffer.wgpu_format();
 
@@ -522,7 +522,7 @@ impl AssetManager {
 
     pub fn load_visual_effect(&self, name: &str) -> anyhow::Result<Rc<VisualEffectAsset>> {
         if let Some(effect) = self.visual_effects.get(name) {
-            return Ok(effect.clone());
+            Ok(effect.clone())
         } else {
             anyhow::bail!("visual effect '{name}' not found");
         }
@@ -540,7 +540,7 @@ impl AssetManager {
     }
 
     /// - `path` is a file path relative the magicka installation root.
-    ///    the casing needn't match the filesystem, and an `xnb` extension will be added if not present.
+    ///   the casing needn't match the filesystem, and an `xnb` extension will be added if not present.
     /// - `base` is the directory `path` is relative to. this path must exist on case sensitive filesystems.
     ///   - if `base` is `None`, the root Magicka installation directory is assumed.
     ///   - if `base` is a relative path, it is appended to the root Magicka installation directory.
@@ -697,7 +697,7 @@ fn preload_visual_effects_inner(
     path: &Path,
     map: &mut HashMap<String, Rc<VisualEffectAsset>>,
 ) -> anyhow::Result<()> {
-    for entry in std::fs::read_dir(&path)? {
+    for entry in std::fs::read_dir(path)? {
         // cursed closure to allow catching all errors at once
         // if one file failes to load, it will be logged and traversal will continue
         if let Err(e) = (|| -> anyhow::Result<()> {

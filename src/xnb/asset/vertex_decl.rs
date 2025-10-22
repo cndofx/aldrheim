@@ -97,7 +97,7 @@ pub enum ElementFormat {
 impl ElementFormat {
     pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let value = reader.read_u8()?;
-        let format = ElementFormat::from_repr(value as u8)
+        let format = ElementFormat::from_repr(value)
             .ok_or_else(|| anyhow::anyhow!("unknown element format: {value}"))?;
         Ok(format)
     }
@@ -137,7 +137,7 @@ pub enum ElementMethod {
 impl ElementMethod {
     pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let value = reader.read_u8()?;
-        let method = ElementMethod::from_repr(value as u8)
+        let method = ElementMethod::from_repr(value)
             .ok_or_else(|| anyhow::anyhow!("unknown element method: {value}"))?;
         Ok(method)
     }
@@ -164,7 +164,7 @@ pub enum ElementUsage {
 impl ElementUsage {
     pub fn read(reader: &mut impl Read) -> anyhow::Result<Self> {
         let value = reader.read_u8()?;
-        let usage = ElementUsage::from_repr(value as u8)
+        let usage = ElementUsage::from_repr(value)
             .ok_or_else(|| anyhow::anyhow!("unknown element usage: {value}"))?;
         Ok(usage)
     }

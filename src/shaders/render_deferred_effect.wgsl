@@ -163,37 +163,39 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // TODO: approximate this curve with smoothstep or similar?
+    var curve_in = in.vertex_color.a * 0.05 + 0.25;
+    curve_in = saturate(curve_in * blend_factor_0 + (1.0 - in.vertex_color.a));
 
-    var w = in.vertex_color.a * 0.05 + 0.25;
-    w = saturate(w * blend_factor_0 + (1.0 - in.vertex_color.a));
+    var curve_center = curve_in - 0.5;
+    var curve_out = 0.0;
+    if curve_center >= 0.0 {
+        var x = curve_in * 2.0;
+        var y = curve_center * 2.0;
+        var scaled_x = x * (x * (-0.5) + 0.55) - 0.4;
+        curve_out = y * scaled_x + 0.1;
+    } else {
+        var x = curve_in * 2.0;
+        var scaled_x = x * (x * 1.1 - 0.8) - 0.45;
+        curve_out = x * scaled_x + 0.8;
+    }
+    curve_out = saturate(curve_out * 12.5);
 
-    var r2z = w * 2.0;
-    var r2x = w * 1.1 - 0.8;
-    w -= 0.5;
-    var r2w = w * 2.0;
-    var r2y = w * (-0.5) + 0.55;
-    r2x = r2z * r2x - 0.45;
-    r2y = r2w * r2y - 0.4;
-    r2z = r2z * r2x + 0.8;
-    r2w = r2w * r2y + 0.1;
-    w = select(r2z, r2w, w >= 0.0);
-    r2w = saturate(w * 12.5);
-
-    r2w = saturate(sharpness * r2w - half_sharpness);
-    var r3 = vec4<f32>(0.0);
-    r3.w = blend_factor_1 * r2w;
-    var r0 = vec4<f32>(diffuse_1.rgb * r3.w, 0.0);
-    var r1w = r2w * (-blend_factor_1) + 1.0;
-    r3 = vec4<f32>(diffuse_0.rgb * r1w + r0.rgb, 0.0);
+    var sharpened = saturate(sharpness * curve_out - half_sharpness);
+    var weight_1 = blend_factor_1 * sharpened;
+    var weight_0 = 1.0 - weight_1;
+    var diffuse_blended = diffuse_0.rgb * weight_0 + diffuse_1.rgb * weight_1;
     
-    r0.w = r0.w * diffuse_0.a + r3.w;
+    var output_alpha = diffuse_0.a * diffuse_1.a + weight_1;
+    if output_alpha < 0.5 {
+        discard;
+    }
 
     // // TODO: skipped normal and material map stuff
 
     var output_0 = vec4<f32>(0.0);
     var output_1 = vec4<f32>(0.0);
 
-    output_0 = vec4<f32>(r3.rgb * in.vertex_color.rgb, 1.0); // TODO: alpha
+    output_0 = vec4<f32>(diffuse_blended * in.vertex_color.rgb, 1.0);
 
     return output_0;
 }

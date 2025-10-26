@@ -29,6 +29,10 @@ impl RenderDeferredEffect {
         } else {
             None
         };
+
+        // TODO: just making sure i notice if this is condition is ever not true
+        assert!(alpha == 1.0);
+
         Ok(RenderDeferredEffect {
             alpha,
             sharpness,

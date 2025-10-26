@@ -30,7 +30,7 @@ impl RenderDeferredEffect {
             None
         };
 
-        // TODO: just making sure i notice if this is condition is ever not true
+        // TODO: assertion fails on Levels/Tsar/Tsar_Rlyeh/tr_s6.xnb
         assert!(alpha == 1.0);
 
         Ok(RenderDeferredEffect {

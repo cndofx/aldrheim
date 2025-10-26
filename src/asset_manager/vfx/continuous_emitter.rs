@@ -41,7 +41,7 @@ pub struct ContinuousEmitter {
 }
 
 impl ContinuousEmitter {
-    pub fn read(node: Node, keyframes_per_second: u8) -> anyhow::Result<Self> {
+    pub fn read(node: Node) -> anyhow::Result<Self> {
         let name = node.attribute("name").ok_or_else(|| {
             anyhow::anyhow!("expected <ContinuousEmitter> node to have a 'name' attribute")
         })?;
@@ -108,110 +108,96 @@ impl ContinuousEmitter {
                     }
                 }
                 "SpreadArcHorizontalAngle" => {
-                    spread_arc_horizontal_angle_degrees =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    spread_arc_horizontal_angle_degrees = Some(VisualEffectProperty::read(child)?);
                 }
                 "SpreadArcHorizontalDistribution" => {
-                    spread_arc_horizontal_angle_dist =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    spread_arc_horizontal_angle_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "SpreadArcVerticalMin" => {
                     spread_arc_vertical_angle_degrees_min =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                        Some(VisualEffectProperty::read(child)?);
                 }
                 "SpreadArcVerticalMax" => {
                     spread_arc_vertical_angle_degrees_max =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                        Some(VisualEffectProperty::read(child)?);
                 }
                 "SpreadArcVerticalDistribution" => {
-                    spread_arc_vertical_angle_dist =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    spread_arc_vertical_angle_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "SpreadConeAngle" => {
-                    spread_cone_angle_degrees =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    spread_cone_angle_degrees = Some(VisualEffectProperty::read(child)?);
                 }
                 "SpreadConeDistribution" => {
-                    spread_cone_angle_dist =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    spread_cone_angle_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "PositionX" => {
-                    position_x = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    position_x = Some(VisualEffectProperty::read(child)?);
                 }
                 "PositionY" => {
-                    position_y = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    position_y = Some(VisualEffectProperty::read(child)?);
                 }
                 "PositionZ" => {
-                    position_z = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    position_z = Some(VisualEffectProperty::read(child)?);
                 }
                 "PositionXOffset" => {
-                    position_offset_x =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    position_offset_x = Some(VisualEffectProperty::read(child)?);
                 }
                 "PositionYOffset" => {
-                    position_offset_y =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    position_offset_y = Some(VisualEffectProperty::read(child)?);
                 }
                 "PositionZOffset" => {
-                    position_offset_z =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    position_offset_z = Some(VisualEffectProperty::read(child)?);
                 }
                 "VelocityMin" => {
-                    velocity_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    velocity_min = Some(VisualEffectProperty::read(child)?);
                 }
                 "VelocityMax" => {
-                    velocity_max = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    velocity_max = Some(VisualEffectProperty::read(child)?);
                 }
                 "VelocityDist" => {
-                    velocity_dist = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    velocity_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "RotationMin" => {
-                    rotation_degrees_min =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    rotation_degrees_min = Some(VisualEffectProperty::read(child)?);
                 }
                 "RotationMax" => {
-                    rotation_degrees_max =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    rotation_degrees_max = Some(VisualEffectProperty::read(child)?);
                 }
                 "RotationSpeedMin" => {
-                    rotation_speed_degrees_min =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    rotation_speed_degrees_min = Some(VisualEffectProperty::read(child)?);
                 }
                 "RotationSpeedMax" => {
-                    rotation_speed_degrees_max =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    rotation_speed_degrees_max = Some(VisualEffectProperty::read(child)?);
                 }
                 "RotationPCCW" => {
-                    rotation_ccw_chance =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    rotation_ccw_chance = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeStartMin" => {
-                    size_start_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    size_start_min = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeStartMax" => {
-                    size_start_max = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    size_start_max = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeStartMDist" => {
-                    size_start_dist =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    size_start_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeEndMin" => {
-                    size_end_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    size_end_min = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeEndMax" => {
-                    size_end_max = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    size_end_max = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeEndMDist" => {
-                    size_end_dist = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    size_end_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "LifeTimeMin" => {
-                    lifetime_min = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    lifetime_min = Some(VisualEffectProperty::read(child)?);
                 }
                 "LifeTimeMax" => {
-                    lifetime_max = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    lifetime_max = Some(VisualEffectProperty::read(child)?);
                 }
                 "LifeTimeDistribution" => {
-                    lifetime_dist = Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    lifetime_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "Particle" => {
                     let value = child_value.ok_or_else(|| {
@@ -220,8 +206,7 @@ impl ContinuousEmitter {
                     particle = Some(value.parse()?);
                 }
                 "ParticlesPerSecond" => {
-                    particles_per_second =
-                        Some(VisualEffectProperty::read(child, keyframes_per_second)?);
+                    particles_per_second = Some(VisualEffectProperty::read(child)?);
                 }
                 _ => {} // TODO
             }

@@ -1,7 +1,7 @@
 use anyhow::Context;
 use roxmltree::{Document, Node};
 
-use crate::asset_manager::vfx::continuous_emitter::ContinuousEmitter;
+use crate::{asset_manager::vfx::continuous_emitter::ContinuousEmitter, scene::vfx::lerp};
 
 pub mod continuous_emitter;
 
@@ -9,7 +9,7 @@ pub mod continuous_emitter;
 pub struct VisualEffectAsset {
     pub kind: VisualEffectKind,
     pub duration: f32,
-    pub keyframes_per_second: u8,
+    pub keyframes_per_second: u32,
     pub emitters: Vec<ParticleEmitter>,
 }
 
@@ -57,7 +57,7 @@ impl VisualEffectAsset {
 
         let keyframes_per_second =
             if let Some(keyframes_per_second_attr) = root.attribute("keyFramesPerSecond") {
-                keyframes_per_second_attr.parse::<u8>().with_context(|| {
+                keyframes_per_second_attr.parse::<u32>().with_context(|| {
                 format!(
                     "unable to parse <Effect> keyFramesPerSecond from '{keyframes_per_second_attr}'"
                 )
@@ -73,7 +73,7 @@ impl VisualEffectAsset {
 
             match child_name {
                 "ContinuousEmitter" => {
-                    let emitter = ContinuousEmitter::read(child, keyframes_per_second)?;
+                    let emitter = ContinuousEmitter::read(child)?;
                     emitters.push(ParticleEmitter::Continuous(emitter));
                 }
                 _ => {
@@ -100,14 +100,14 @@ pub enum VisualEffectKind {
 
 #[derive(Debug)]
 pub struct VisualEffectPropertyKeyframe {
-    pub time: f32,
+    pub time: u32,
     pub value: f32,
 }
 
 impl VisualEffectPropertyKeyframe {
-    pub fn read(node: Node, keyframes_per_second: u8) -> anyhow::Result<Self> {
+    pub fn read(node: Node) -> anyhow::Result<Self> {
         let time = if let Some(time_attr) = node.attribute("time") {
-            time_attr.parse::<i32>().with_context(|| {
+            time_attr.parse::<u32>().with_context(|| {
                 format!("unable to parse vfx property keyframe time from '{time_attr}'")
             })?
         } else {
@@ -122,7 +122,7 @@ impl VisualEffectPropertyKeyframe {
             anyhow::bail!("expected <Key> node to have a 'value' attribute");
         };
 
-        let time = (time as f32) / (keyframes_per_second as f32);
+        // let time = (time as f32) / (keyframes_per_second as f32);
 
         Ok(VisualEffectPropertyKeyframe { time, value })
     }
@@ -135,7 +135,7 @@ pub enum VisualEffectProperty {
 }
 
 impl VisualEffectProperty {
-    pub fn read(node: Node, keyframes_per_second: u8) -> anyhow::Result<Self> {
+    pub fn read(node: Node) -> anyhow::Result<Self> {
         let name = node.tag_name().name();
         let value = node
             .attributes()
@@ -154,7 +154,7 @@ impl VisualEffectProperty {
                 continue;
             }
 
-            let keyframe = VisualEffectPropertyKeyframe::read(child, keyframes_per_second)?;
+            let keyframe = VisualEffectPropertyKeyframe::read(child)?;
             keyframes.push(keyframe);
         }
 
@@ -164,15 +164,42 @@ impl VisualEffectProperty {
             );
         }
 
+        // just to be safe
+        keyframes.sort_by_key(|frame| frame.time);
+        keyframes.dedup_by_key(|frame| frame.time);
+
         Ok(VisualEffectProperty::Animated(keyframes))
     }
 
     /// assumes keyframes are sorted by time
-    pub fn interpolate(&self, time: f32) -> f32 {
+    pub fn interpolate(&self, current_time: f32, fps: u32) -> f32 {
         match self {
             VisualEffectProperty::Constant(v) => *v,
             VisualEffectProperty::Animated(keyframes) => {
-                todo!("interpolate vfx keyframes")
+                assert!(!keyframes.is_empty());
+
+                let frame_time = (current_time * fps as f32) as u32;
+
+                let first = keyframes.first().unwrap();
+                if frame_time <= first.time {
+                    return first.value;
+                }
+
+                let last = keyframes.last().unwrap();
+                if frame_time >= last.time {
+                    return last.value;
+                }
+
+                for window in keyframes.windows(2) {
+                    let f0 = &window[0];
+                    let f1 = &window[1];
+                    if frame_time >= f0.time && frame_time <= f1.time {
+                        let t = ((frame_time - f0.time) as f32) / ((f1.time - f0.time) as f32);
+                        return lerp(f0.value, f1.value, t);
+                    }
+                }
+
+                unreachable!()
             }
         }
     }

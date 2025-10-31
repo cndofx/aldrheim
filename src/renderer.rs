@@ -287,23 +287,6 @@ impl Renderer {
     }
 
     pub fn render(&mut self, camera: &Camera) -> Result<(), wgpu::SurfaceError> {
-        // TODO: next required features
-        // - support texture alpha (mostly for foliage, binary alpha, no blending needed?)
-        // - some surfaces are supposed to be a blend between different textures (eg stone and dirt)
-        // - primitive liquid rendering for now just so there is no empty void, proper material can come later
-        // - render background image over clear color if present ("skymap" in level xml?)
-
-        // TODO: future optimizations
-        // performance is currently *fine*, and maybe will continue to be fine,
-        // but early profiling seems to show that rendering performance is heavily
-        // bottlenecked by memory access latency, seemingly due to my method of
-        // storing vertex data in a storage buffer and looking up vertex data dynamically
-        // based on a uniform. some alternative options are:
-        // - create multiple versions of the pipeline for different vertex layouts (probably not a great idea, too many possibilities)
-        // - at load time, parse vertex data and transcode it into a fixed layout that the pipeline can optimize for (possible memory overhead for unused attributes)
-        // - at load time, parse vertex data into multiple vertex buffers and only bind ones that are used (uncertain tradeoffs?)
-        // maybe throw in zeux/meshoptimizer too if we're preprocessing vertex data anyway
-
         self.window.request_redraw();
 
         if !self.is_surface_configured {

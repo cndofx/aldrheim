@@ -190,6 +190,16 @@ impl VisualEffectNode {
                         .spread_cone_angle_dist
                         .interpolate(self.animation_timer, self.animation_fps);
 
+                    let alpha_min = emitter
+                        .alpha_min
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let alpha_max = emitter
+                        .alpha_max
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let alpha_dist = emitter
+                        .alpha_dist
+                        .interpolate(self.animation_timer, self.animation_fps);
+
                     for _ in 0..particles_to_emit {
                         let size_start =
                             random_distribution(size_start_min, size_start_max, size_start_dist);
@@ -241,6 +251,8 @@ impl VisualEffectNode {
                         let position_offset =
                             Vec3::new(position_offset_x, position_offset_y, position_offset_z);
 
+                        let alpha = random_distribution(alpha_min, alpha_max, alpha_dist);
+
                         let particle = Particle {
                             position: translation + position + position_offset,
                             velocity,
@@ -254,6 +266,7 @@ impl VisualEffectNode {
                             size_end,
                             sprite: emitter.sprite,
                             additive: emitter.additive_blend,
+                            alpha,
                         };
 
                         self.particles.push(particle);
@@ -280,6 +293,7 @@ impl VisualEffectNode {
                 rotation: particle.rotation,
                 sprite: particle.sprite as u32,
                 additive: if particle.additive { 1 } else { 0 },
+                alpha: particle.alpha,
             }
         });
 
@@ -300,6 +314,7 @@ pub struct Particle {
     pub size_end: f32,
     pub sprite: u8,
     pub additive: bool,
+    pub alpha: f32,
 }
 
 impl Particle {

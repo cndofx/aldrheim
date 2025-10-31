@@ -5,6 +5,7 @@ struct InstanceInput {
     @location(3) rotation: f32,
     @location(4) sprite: u32,
     @location(5) additive: i32,
+    @location(6) alpha: f32,
 };
 
 struct VertexOutput {
@@ -12,6 +13,7 @@ struct VertexOutput {
     @location(0) tex_coords: vec3<f32>,
     @location(1) sheet_index: u32,
     @location(2) additive: i32,
+    @location(3) alpha: f32,
 };
 
 struct CameraUniform {
@@ -67,6 +69,7 @@ fn vs_main(in: InstanceInput, @builtin(vertex_index) vertex_index: u32) -> Verte
     out.tex_coords = vec3<f32>(sprite_uv, in.lifetime);
     out.sheet_index = sheet_index;
     out.additive = in.additive;
+    out.alpha = in.alpha;
     return out;
 }
 
@@ -78,11 +81,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    var color = sample.rgb * sample.a;
+    var alpha = sample.a * in.alpha;
+
+    var color = sample.rgb * alpha;
     color = 1 - exp2(color * -1.0);
 
     // 1.0 if additive, else 1.0 - a
-    var alpha = select(1.0 - sample.a, 1.0, in.additive != 0);
+    alpha = select(1.0 - alpha, 1.0, in.additive != 0);
 
     return vec4<f32>(color, alpha);
 }

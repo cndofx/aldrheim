@@ -5,7 +5,8 @@ use crate::asset_manager::vfx::{SpreadType, VisualEffectProperty};
 #[derive(Debug)]
 pub struct ContinuousEmitter {
     pub name: String, // names arent unique so these cant be used as a hashmap key
-    pub additive_blend: bool,
+    pub particles_per_second: VisualEffectProperty,
+
     pub spread_type: SpreadType,
     pub spread_arc_horizontal_angle_degrees: VisualEffectProperty,
     pub spread_arc_horizontal_angle_dist: VisualEffectProperty,
@@ -39,7 +40,11 @@ pub struct ContinuousEmitter {
     pub lifetime_min: VisualEffectProperty,
     pub lifetime_max: VisualEffectProperty,
     pub lifetime_dist: VisualEffectProperty,
-    pub particles_per_second: VisualEffectProperty,
+
+    pub additive_blend: bool,
+    pub alpha_min: VisualEffectProperty,
+    pub alpha_max: VisualEffectProperty,
+    pub alpha_dist: VisualEffectProperty,
     pub sprite: u8,
 }
 
@@ -49,7 +54,7 @@ impl ContinuousEmitter {
             anyhow::anyhow!("expected <ContinuousEmitter> node to have a 'name' attribute")
         })?;
 
-        let mut additive_blend: Option<bool> = None;
+        let mut particles_per_second: Option<VisualEffectProperty> = None;
         let mut spread_type: Option<SpreadType> = None;
         let mut spread_arc_horizontal_angle_degrees: Option<VisualEffectProperty> = None;
         let mut spread_arc_horizontal_angle_dist: Option<VisualEffectProperty> = None;
@@ -74,17 +79,21 @@ impl ContinuousEmitter {
         let mut rotation_speed_degrees_min: Option<VisualEffectProperty> = None;
         let mut rotation_speed_degrees_max: Option<VisualEffectProperty> = None;
         let mut rotation_ccw_chance: Option<VisualEffectProperty> = None;
-        let mut lifetime_min: Option<VisualEffectProperty> = None;
-        let mut lifetime_max: Option<VisualEffectProperty> = None;
-        let mut lifetime_dist: Option<VisualEffectProperty> = None;
         let mut size_start_min: Option<VisualEffectProperty> = None;
         let mut size_start_max: Option<VisualEffectProperty> = None;
         let mut size_start_dist: Option<VisualEffectProperty> = None;
         let mut size_end_min: Option<VisualEffectProperty> = None;
         let mut size_end_max: Option<VisualEffectProperty> = None;
         let mut size_end_dist: Option<VisualEffectProperty> = None;
-        let mut particles_per_second: Option<VisualEffectProperty> = None;
-        let mut particle: Option<u8> = None;
+        let mut lifetime_min: Option<VisualEffectProperty> = None;
+        let mut lifetime_max: Option<VisualEffectProperty> = None;
+        let mut lifetime_dist: Option<VisualEffectProperty> = None;
+
+        let mut additive_blend: Option<bool> = None;
+        let mut alpha_min: Option<VisualEffectProperty> = None;
+        let mut alpha_max: Option<VisualEffectProperty> = None;
+        let mut alpha_dist: Option<VisualEffectProperty> = None;
+        let mut sprite: Option<u8> = None;
 
         for child in node.children().filter(|n| n.is_element()) {
             // seems like the names are consistently cased but the 'value' attribute is not?
@@ -225,11 +234,20 @@ impl ContinuousEmitter {
                 "LifeTimeDistribution" => {
                     lifetime_dist = Some(VisualEffectProperty::read(child)?);
                 }
+                "AlphaMin" => {
+                    alpha_min = Some(VisualEffectProperty::read(child)?);
+                }
+                "AlphaMax" => {
+                    alpha_max = Some(VisualEffectProperty::read(child)?);
+                }
+                "AlphaDistribution" => {
+                    alpha_dist = Some(VisualEffectProperty::read(child)?);
+                }
                 "Particle" => {
                     let value = child_value.ok_or_else(|| {
                         anyhow::anyhow!("expected <{child_name}> node to have a 'value' attribute")
                     })?;
-                    particle = Some(value.parse()?);
+                    sprite = Some(value.parse()?);
                 }
                 "ParticlesPerSecond" => {
                     particles_per_second = Some(VisualEffectProperty::read(child)?);
@@ -250,7 +268,7 @@ impl ContinuousEmitter {
             anyhow::bail!("expected <ContinuousEmitter> node to have a <ParticlesPerSecond> child");
         };
 
-        let Some(particle) = particle else {
+        let Some(sprite) = sprite else {
             anyhow::bail!("expected <ContinuousEmitter> node to have a <Particle> child");
         };
 
@@ -298,10 +316,13 @@ impl ContinuousEmitter {
         let lifetime_min = lifetime_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let lifetime_max = lifetime_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let lifetime_dist = lifetime_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let alpha_min = alpha_min.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let alpha_max = alpha_max.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let alpha_dist = alpha_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
 
         Ok(ContinuousEmitter {
             name: name.into(),
-            additive_blend,
+            particles_per_second,
             spread_type,
             spread_arc_horizontal_angle_degrees,
             spread_arc_horizontal_angle_dist,
@@ -335,8 +356,11 @@ impl ContinuousEmitter {
             lifetime_min,
             lifetime_max,
             lifetime_dist,
-            particles_per_second,
-            sprite: particle,
+            additive_blend,
+            alpha_min,
+            alpha_max,
+            alpha_dist,
+            sprite,
         })
     }
 }

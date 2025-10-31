@@ -190,6 +190,36 @@ impl VisualEffectNode {
                         .spread_cone_angle_dist
                         .interpolate(self.animation_timer, self.animation_fps);
 
+                    let hue_min = emitter
+                        .hue_min
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let hue_max = emitter
+                        .hue_max
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let hue_dist = emitter
+                        .hue_dist
+                        .interpolate(self.animation_timer, self.animation_fps);
+
+                    let saturation_min = emitter
+                        .saturation_min
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let saturation_max = emitter
+                        .saturation_max
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let saturation_dist = emitter
+                        .saturation_dist
+                        .interpolate(self.animation_timer, self.animation_fps);
+
+                    let value_min = emitter
+                        .value_min
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let value_max = emitter
+                        .value_max
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let value_dist = emitter
+                        .value_dist
+                        .interpolate(self.animation_timer, self.animation_fps);
+
                     let alpha_min = emitter
                         .alpha_min
                         .interpolate(self.animation_timer, self.animation_fps);
@@ -251,6 +281,14 @@ impl VisualEffectNode {
                         let position_offset =
                             Vec3::new(position_offset_x, position_offset_y, position_offset_z);
 
+                        let hue_rotation =
+                            (random_distribution(hue_min, hue_max, hue_dist) * 0.159155 + 0.5)
+                                .fract()
+                                * TAU
+                                - PI;
+                        let saturation =
+                            random_distribution(saturation_min, saturation_max, saturation_dist);
+                        let value = random_distribution(value_min, value_max, value_dist);
                         let alpha = random_distribution(alpha_min, alpha_max, alpha_dist);
 
                         let particle = Particle {
@@ -266,6 +304,11 @@ impl VisualEffectNode {
                             size_end,
                             sprite: emitter.sprite,
                             additive: emitter.additive_blend,
+                            hsv: emitter.hsv,
+                            colorize: emitter.colorize,
+                            hue_rotation,
+                            saturation,
+                            value,
                             alpha,
                         };
 
@@ -293,6 +336,11 @@ impl VisualEffectNode {
                 rotation: particle.rotation,
                 sprite: particle.sprite as u32,
                 additive: if particle.additive { 1 } else { 0 },
+                hsv: if particle.hsv { 1 } else { 0 },
+                colorize: if particle.colorize { 1 } else { 0 },
+                hue: particle.hue_rotation,
+                saturation: particle.saturation,
+                value: particle.value,
                 alpha: particle.alpha,
             }
         });
@@ -314,6 +362,11 @@ pub struct Particle {
     pub size_end: f32,
     pub sprite: u8,
     pub additive: bool,
+    pub hsv: bool,
+    pub colorize: bool,
+    pub hue_rotation: f32,
+    pub saturation: f32,
+    pub value: f32,
     pub alpha: f32,
 }
 
@@ -334,10 +387,7 @@ impl Particle {
 
         self.position += self.velocity * dt;
 
-        self.rotation = (self.rotation + self.rotation_speed * dt).rem_euclid(TAU);
-        if self.rotation > PI {
-            self.rotation -= TAU;
-        }
+        self.rotation = wrap_radians(self.rotation + self.rotation_speed * dt);
 
         false
     }
@@ -345,6 +395,11 @@ impl Particle {
 
 pub fn lerp(a: f32, b: f32, f: f32) -> f32 {
     a + ((b - a) * f)
+}
+
+pub fn wrap_radians(angle: f32) -> f32 {
+    let a = angle.rem_euclid(TAU);
+    if a > PI { a - TAU } else { a }
 }
 
 fn random_distribution(min: f32, max: f32, dist: f32) -> f32 {

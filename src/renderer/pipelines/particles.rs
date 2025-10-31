@@ -170,18 +170,28 @@ pub struct ParticleInstance {
     pub rotation: f32,
     pub sprite: u32,
     pub additive: i32,
+    pub hsv: i32,
+    pub colorize: i32,
+    pub hue: f32,
+    pub saturation: f32,
+    pub value: f32,
     pub alpha: f32,
 }
 
 impl ParticleInstance {
-    pub const ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+    pub const ATTRIBUTES: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
         0 => Float32x3,
         1 => Float32,
         2 => Float32,
         3 => Float32,
         4 => Uint32,
         5 => Sint32,
-        6 => Float32,
+        6 => Sint32,
+        7 => Sint32,
+        8 => Float32,
+        9 => Float32,
+        10 => Float32,
+        11 => Float32,
     ];
 
     pub fn layout() -> wgpu::VertexBufferLayout<'static> {

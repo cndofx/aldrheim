@@ -42,6 +42,17 @@ pub struct ContinuousEmitter {
     pub lifetime_dist: VisualEffectProperty,
 
     pub additive_blend: bool,
+    pub hsv: bool,
+    pub colorize: bool,
+    pub hue_min: VisualEffectProperty,
+    pub hue_max: VisualEffectProperty,
+    pub hue_dist: VisualEffectProperty,
+    pub saturation_min: VisualEffectProperty,
+    pub saturation_max: VisualEffectProperty,
+    pub saturation_dist: VisualEffectProperty,
+    pub value_min: VisualEffectProperty,
+    pub value_max: VisualEffectProperty,
+    pub value_dist: VisualEffectProperty,
     pub alpha_min: VisualEffectProperty,
     pub alpha_max: VisualEffectProperty,
     pub alpha_dist: VisualEffectProperty,
@@ -90,6 +101,17 @@ impl ContinuousEmitter {
         let mut lifetime_dist: Option<VisualEffectProperty> = None;
 
         let mut additive_blend: Option<bool> = None;
+        let mut hsv: Option<bool> = None;
+        let mut colorize: Option<bool> = None;
+        let mut hue_min: Option<VisualEffectProperty> = None;
+        let mut hue_max: Option<VisualEffectProperty> = None;
+        let mut hue_dist: Option<VisualEffectProperty> = None;
+        let mut saturation_min: Option<VisualEffectProperty> = None;
+        let mut saturation_max: Option<VisualEffectProperty> = None;
+        let mut saturation_dist: Option<VisualEffectProperty> = None;
+        let mut value_min: Option<VisualEffectProperty> = None;
+        let mut value_max: Option<VisualEffectProperty> = None;
+        let mut value_dist: Option<VisualEffectProperty> = None;
         let mut alpha_min: Option<VisualEffectProperty> = None;
         let mut alpha_max: Option<VisualEffectProperty> = None;
         let mut alpha_dist: Option<VisualEffectProperty> = None;
@@ -213,7 +235,7 @@ impl ContinuousEmitter {
                 "SizeStartMax" => {
                     size_start_max = Some(VisualEffectProperty::read(child)?);
                 }
-                "SizeStartMDist" => {
+                "SizeStartDist" => {
                     size_start_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "SizeEndMin" => {
@@ -222,7 +244,7 @@ impl ContinuousEmitter {
                 "SizeEndMax" => {
                     size_end_max = Some(VisualEffectProperty::read(child)?);
                 }
-                "SizeEndMDist" => {
+                "SizeEndDist" => {
                     size_end_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "LifeTimeMin" => {
@@ -233,6 +255,89 @@ impl ContinuousEmitter {
                 }
                 "LifeTimeDistribution" => {
                     lifetime_dist = Some(VisualEffectProperty::read(child)?);
+                }
+                // TODO: i dont really understand this yet but "HSV" and "ColorControlAlpha" seem to refer to
+                // the same thing but with opposite values?
+                "HSV" => {
+                    let value = child_value.ok_or_else(|| {
+                        anyhow::anyhow!("expected <{child_name}> node to have a 'value' attribute")
+                    })?;
+                    match value.to_lowercase().as_str() {
+                        "true" => {
+                            hsv = Some(true);
+                        }
+                        "false" => {
+                            hsv = Some(false);
+                        }
+                        _ => {
+                            anyhow::bail!(
+                                "expected <{child_name}> node 'value' attribute value to be 'true' or 'false', got '{value}'"
+                            );
+                        }
+                    }
+                }
+                "ColorControlAlpha" => {
+                    let value = child_value.ok_or_else(|| {
+                        anyhow::anyhow!("expected <{child_name}> node to have a 'value' attribute")
+                    })?;
+                    match value.to_lowercase().as_str() {
+                        "true" => {
+                            hsv = Some(false);
+                        }
+                        "false" => {
+                            hsv = Some(true);
+                        }
+                        _ => {
+                            anyhow::bail!(
+                                "expected <{child_name}> node 'value' attribute value to be 'true' or 'false', got '{value}'"
+                            );
+                        }
+                    }
+                }
+                "Colorize" => {
+                    let value = child_value.ok_or_else(|| {
+                        anyhow::anyhow!("expected <{child_name}> node to have a 'value' attribute")
+                    })?;
+                    match value.to_lowercase().as_str() {
+                        "true" => {
+                            colorize = Some(true);
+                        }
+                        "false" => {
+                            colorize = Some(false);
+                        }
+                        _ => {
+                            anyhow::bail!(
+                                "expected <{child_name}> node 'value' attribute value to be 'true' or 'false', got '{value}'"
+                            );
+                        }
+                    }
+                }
+                "HueMin" => {
+                    hue_min = Some(VisualEffectProperty::read(child)?);
+                }
+                "HueMax" => {
+                    hue_max = Some(VisualEffectProperty::read(child)?);
+                }
+                "HueDistribution" => {
+                    hue_dist = Some(VisualEffectProperty::read(child)?);
+                }
+                "SatMin" => {
+                    saturation_min = Some(VisualEffectProperty::read(child)?);
+                }
+                "SatMax" => {
+                    saturation_max = Some(VisualEffectProperty::read(child)?);
+                }
+                "SatDistribution" => {
+                    saturation_dist = Some(VisualEffectProperty::read(child)?);
+                }
+                "ValueMin" => {
+                    value_min = Some(VisualEffectProperty::read(child)?);
+                }
+                "ValueMax" => {
+                    value_max = Some(VisualEffectProperty::read(child)?);
+                }
+                "ValueDistribution" => {
+                    value_dist = Some(VisualEffectProperty::read(child)?);
                 }
                 "AlphaMin" => {
                     alpha_min = Some(VisualEffectProperty::read(child)?);
@@ -316,6 +421,17 @@ impl ContinuousEmitter {
         let lifetime_min = lifetime_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let lifetime_max = lifetime_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let lifetime_dist = lifetime_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let hsv = hsv.unwrap_or(false);
+        let colorize = colorize.unwrap_or(false);
+        let hue_min = hue_min.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let hue_max = hue_max.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let hue_dist = hue_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let saturation_min = saturation_min.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let saturation_max = saturation_max.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let saturation_dist = saturation_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let value_min = value_min.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let value_max = value_max.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let value_dist = value_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
         let alpha_min = alpha_min.unwrap_or(VisualEffectProperty::Constant(1.0));
         let alpha_max = alpha_max.unwrap_or(VisualEffectProperty::Constant(1.0));
         let alpha_dist = alpha_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
@@ -357,6 +473,17 @@ impl ContinuousEmitter {
             lifetime_max,
             lifetime_dist,
             additive_blend,
+            hsv,
+            colorize,
+            hue_min,
+            hue_max,
+            hue_dist,
+            saturation_min,
+            saturation_max,
+            saturation_dist,
+            value_min,
+            value_max,
+            value_dist,
             alpha_min,
             alpha_max,
             alpha_dist,

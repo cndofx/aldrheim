@@ -108,6 +108,13 @@ impl VisualEffectNode {
                         .velocity_dist
                         .interpolate(self.animation_timer, self.animation_fps);
 
+                    let drag = emitter
+                        .drag
+                        .interpolate(self.animation_timer, self.animation_fps);
+                    let gravity = emitter
+                        .gravity
+                        .interpolate(self.animation_timer, self.animation_fps);
+
                     let rotation_degrees_min = emitter
                         .rotation_degrees_min
                         .interpolate(self.animation_timer, self.animation_fps);
@@ -237,6 +244,8 @@ impl VisualEffectNode {
                         let particle = Particle {
                             position: translation + position + position_offset,
                             velocity,
+                            drag,
+                            gravity,
                             rotation: rotation_radians,
                             rotation_speed: rotation_speed_radians,
                             lifetime,
@@ -281,6 +290,8 @@ impl VisualEffectNode {
 pub struct Particle {
     pub position: Vec3,
     pub velocity: Vec3,
+    pub drag: f32,
+    pub gravity: f32,
     pub rotation: f32,
     pub rotation_speed: f32,
     pub lifetime: f32,
@@ -298,6 +309,13 @@ impl Particle {
         if self.lifetime_remaining <= 0.0 {
             return true;
         }
+
+        self.velocity = Vec3::new(
+            self.velocity.x,
+            self.velocity.y + self.gravity * dt,
+            self.velocity.z,
+        );
+        self.velocity *= self.drag.powf(dt);
 
         self.position += self.velocity * dt;
 

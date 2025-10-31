@@ -23,6 +23,8 @@ pub struct ContinuousEmitter {
     pub velocity_min: VisualEffectProperty,
     pub velocity_max: VisualEffectProperty,
     pub velocity_dist: VisualEffectProperty,
+    pub drag: VisualEffectProperty,
+    pub gravity: VisualEffectProperty,
     pub rotation_degrees_min: VisualEffectProperty,
     pub rotation_degrees_max: VisualEffectProperty,
     pub rotation_speed_degrees_min: VisualEffectProperty,
@@ -65,6 +67,8 @@ impl ContinuousEmitter {
         let mut velocity_min: Option<VisualEffectProperty> = None;
         let mut velocity_max: Option<VisualEffectProperty> = None;
         let mut velocity_dist: Option<VisualEffectProperty> = None;
+        let mut drag: Option<VisualEffectProperty> = None;
+        let mut gravity: Option<VisualEffectProperty> = None;
         let mut rotation_degrees_min: Option<VisualEffectProperty> = None;
         let mut rotation_degrees_max: Option<VisualEffectProperty> = None;
         let mut rotation_speed_degrees_min: Option<VisualEffectProperty> = None;
@@ -173,6 +177,12 @@ impl ContinuousEmitter {
                 "VelocityDist" => {
                     velocity_dist = Some(VisualEffectProperty::read(child)?);
                 }
+                "Drag" => {
+                    drag = Some(VisualEffectProperty::read(child)?);
+                }
+                "Gravity" => {
+                    gravity = Some(VisualEffectProperty::read(child)?);
+                }
                 "RotationMin" => {
                     rotation_degrees_min = Some(VisualEffectProperty::read(child)?);
                 }
@@ -267,6 +277,8 @@ impl ContinuousEmitter {
         let velocity_min = velocity_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let velocity_max = velocity_max.unwrap_or(VisualEffectProperty::Constant(0.0));
         let velocity_dist = velocity_dist.unwrap_or(VisualEffectProperty::Constant(1.0));
+        let drag = drag.unwrap_or(VisualEffectProperty::Constant(0.0));
+        let gravity = gravity.unwrap_or(VisualEffectProperty::Constant(0.0));
         let rotation_degrees_min =
             rotation_degrees_min.unwrap_or(VisualEffectProperty::Constant(0.0));
         let rotation_degrees_max =
@@ -307,6 +319,8 @@ impl ContinuousEmitter {
             velocity_min,
             velocity_max,
             velocity_dist,
+            drag,
+            gravity,
             rotation_degrees_min,
             rotation_degrees_max,
             rotation_speed_degrees_min,

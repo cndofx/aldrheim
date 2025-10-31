@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3};
 
 use crate::{
     asset_manager::{BiTreeAsset, ModelAsset},
-    renderer::{DrawCommand, RenderContext, Renderable, RenderableBounds, camera::Camera},
+    renderer::{DrawCommands, camera::Camera},
     scene::vfx::VisualEffectNode,
     xnb::asset::model::BoundingBox,
 };
@@ -43,18 +43,14 @@ impl Scene {
         self.root_node.update(dt);
     }
 
-    pub fn render(&mut self, render_context: &RenderContext) -> Vec<DrawCommand> {
+    pub fn render(&mut self, draw_commands: &mut DrawCommands) {
         if !self.root_node.visible {
-            return Vec::new();
+            return;
         }
 
-        let mut draw_commands = Vec::new();
         let mut transform_stack = Vec::new();
         transform_stack.push(Mat4::IDENTITY);
-        self.root_node
-            .render(&mut draw_commands, &mut transform_stack, render_context);
-
-        draw_commands
+        self.root_node.render(draw_commands, &mut transform_stack);
     }
 }
 
@@ -80,12 +76,7 @@ impl SceneNode {
         }
     }
 
-    pub fn render(
-        &mut self,
-        draw_commands: &mut Vec<DrawCommand>,
-        transform_stack: &mut Vec<Mat4>,
-        render_context: &RenderContext,
-    ) {
+    pub fn render(&mut self, draw_commands: &mut DrawCommands, transform_stack: &mut Vec<Mat4>) {
         if !self.visible {
             return;
         }
@@ -95,28 +86,20 @@ impl SceneNode {
         transform_stack.push(current_transform);
 
         match &mut self.kind {
-            SceneNodeKind::Model(model_node) => draw_commands.push(DrawCommand {
-                renderable: Renderable::Model(model_node.clone()),
-                bounds: None, // TODO
-                transform: current_transform,
-            }),
+            SceneNodeKind::Model(model_node) => todo!(),
             // TODO: it seems like bitree parent nodes draw all of the same mesh as their child nodes combined?
             // should i render just the parent nodes or just the leaf child nodes?
-            SceneNodeKind::BiTree(bitree_node) => draw_commands.push(DrawCommand {
-                renderable: Renderable::BiTreeNode(bitree_node.clone()),
-                bounds: Some(RenderableBounds::Box(bitree_node.bounding_box.clone())),
-                transform: current_transform,
-            }),
+            SceneNodeKind::BiTree(bitree_node) => {
+                draw_commands.add_bitree(bitree_node.clone(), current_transform);
+            }
             SceneNodeKind::VisualEffect(vfx_node) => {
-                if let Some(draw) = vfx_node.render(current_transform, render_context) {
-                    draw_commands.push(draw);
-                }
+                vfx_node.render(draw_commands);
             }
             _ => {}
         }
 
         for child in self.children.iter_mut() {
-            child.render(draw_commands, transform_stack, render_context);
+            child.render(draw_commands, transform_stack);
         }
 
         transform_stack.pop();

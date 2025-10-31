@@ -8,7 +8,7 @@ use rand::Rng;
 
 use crate::{
     asset_manager::vfx::{ParticleEmitter, SpreadType, VisualEffectAsset},
-    renderer::{DrawCommand, RenderContext, Renderable, pipelines::particles::ParticleInstance},
+    renderer::{DrawCommands, pipelines::particles::ParticleInstance},
 };
 
 pub struct VisualEffectNode {
@@ -19,9 +19,6 @@ pub struct VisualEffectNode {
     pub animation_timer: f32,
     pub animation_fps: u32,
     pub last_translation: Option<Vec3>,
-
-    pub instance_buffer: Option<wgpu::Buffer>,
-    pub instance_buffer_capacity: u64,
 }
 
 impl VisualEffectNode {
@@ -33,9 +30,6 @@ impl VisualEffectNode {
             animation_fps: effect.keyframes_per_second,
             last_translation: None,
             effect,
-
-            instance_buffer: None,
-            instance_buffer_capacity: 0,
         }
     }
 
@@ -241,7 +235,7 @@ impl VisualEffectNode {
                             Vec3::new(position_offset_x, position_offset_y, position_offset_z);
 
                         let particle = Particle {
-                            position: position + position_offset,
+                            position: translation + position + position_offset,
                             velocity,
                             rotation: rotation_radians,
                             rotation_speed: rotation_speed_radians,
@@ -259,71 +253,26 @@ impl VisualEffectNode {
         }
     }
 
-    pub fn render(
-        &mut self,
-        transform: Mat4,
-        render_context: &RenderContext,
-    ) -> Option<DrawCommand> {
+    pub fn render(&mut self, draw_commands: &mut DrawCommands) {
         if self.particles.is_empty() {
-            return None;
+            return;
         }
 
-        // TODO: rotation breaks the billboard effect, what is the correct way to handle that?
-        let translation = transform.transform_point3(Vec3::ZERO);
-        let transform = Mat4::from_translation(translation);
+        let instances = self.particles.iter().map(|particle| {
+            let lifetime = 1.0 - (particle.lifetime_remaining / particle.lifetime);
+            ParticleInstance {
+                position: particle.position,
+                lifetime,
+                // seems like "size" refers to the distance from the center to a corner?
+                // the particle vertices define a 1x1 quad,
+                // but a "size" of 1 means a roughly 2x2 quad?
+                size: lerp(particle.size_start, particle.size_end, lifetime) * 2.0,
+                rotation: particle.rotation,
+                sprite: particle.sprite as u32,
+            }
+        });
 
-        let instances = self
-            .particles
-            .iter()
-            .map(|particle| {
-                let lifetime = 1.0 - (particle.lifetime_remaining / particle.lifetime);
-                ParticleInstance {
-                    position: particle.position,
-                    lifetime,
-                    // seems like "size" refers to the distance from the center to a corner?
-                    // the particle vertices define a 1x1 quad,
-                    // but a "size" of 1 means a roughly 2x2 quad?
-                    size: lerp(particle.size_start, particle.size_end, lifetime) * 2.0,
-                    rotation: particle.rotation,
-                    sprite: particle.sprite as u32,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        if self.instance_buffer.is_none() || self.instance_buffer_capacity < instances.len() as u64
-        {
-            let new_capacity = ((instances.len() as f32 * 1.5) as u64).max(100);
-            log::debug!(
-                "growing vfx instance buffer capacity from {} to {}",
-                self.instance_buffer_capacity,
-                new_capacity
-            );
-            let new_buffer = render_context
-                .device
-                .create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("VisualEffectNode Instance Buffer"),
-                    size: new_capacity * std::mem::size_of::<ParticleInstance>() as u64,
-                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
-            self.instance_buffer = Some(new_buffer);
-            self.instance_buffer_capacity = new_capacity;
-        }
-
-        let instance_buffer = self.instance_buffer.as_ref().unwrap();
-
-        render_context
-            .queue
-            .write_buffer(instance_buffer, 0, bytemuck::cast_slice(&instances));
-
-        Some(DrawCommand {
-            renderable: Renderable::VisualEffect(VisualEffectNodeRenderable {
-                instance_buffer: instance_buffer.clone(),
-                instance_count: instances.len() as u32,
-            }),
-            bounds: None,
-            transform,
-        })
+        draw_commands.add_particles(instances);
     }
 }
 
@@ -356,11 +305,6 @@ impl Particle {
 
         false
     }
-}
-
-pub struct VisualEffectNodeRenderable {
-    pub instance_buffer: wgpu::Buffer,
-    pub instance_count: u32,
 }
 
 pub fn lerp(a: f32, b: f32, f: f32) -> f32 {

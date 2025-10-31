@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc};
 
 use glam::Mat4;
 use winit::window::Window;
@@ -8,11 +8,11 @@ use crate::{
     renderer::{
         camera::{Camera, Frustum},
         pipelines::{
-            particles::ParticlesPipeline, render_deferred_effect::RenderDeferredEffectPipeline,
+            particles::{ParticleInstance, ParticlesPipeline},
+            render_deferred_effect::RenderDeferredEffectPipeline,
         },
     },
-    scene::{self, vfx::VisualEffectNodeRenderable},
-    xnb::asset::model::{BoundingBox, BoundingSphere},
+    scene,
 };
 
 pub mod camera;
@@ -218,13 +218,18 @@ pub struct Renderer {
     is_surface_configured: bool,
     pub window: Arc<Window>,
 
-    camera_uniform_buffer: wgpu::Buffer,
-    camera_uniform_bind_group: wgpu::BindGroup,
+    particles_pipeline: ParticlesPipeline,
+    render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
 
     depth_texture: wgpu::Texture,
 
-    particles_pipeline: ParticlesPipeline,
-    render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
+    camera_uniform_buffer: wgpu::Buffer,
+    camera_uniform_bind_group: wgpu::BindGroup,
+
+    particles_instance_buffer: wgpu::Buffer,
+
+    // holding onto allocated buffers to avoid recreating them (potentially multiple times) every frame
+    draw_commands: DrawCommands,
 }
 
 impl Renderer {
@@ -258,6 +263,8 @@ impl Renderer {
 
         let depth_texture = create_depth_texture(&context.device, &surface_config);
 
+        let particles_instance_buffer = create_particles_buffer(&context.device, 1000);
+
         let renderer = Renderer {
             context,
             surface,
@@ -272,15 +279,14 @@ impl Renderer {
 
             particles_pipeline,
             render_deferred_effect_pipeline,
+
+            particles_instance_buffer,
+            draw_commands: DrawCommands::new(),
         };
         Ok(renderer)
     }
 
-    pub fn render(
-        &mut self,
-        draw_commands: &[DrawCommand],
-        camera: &Camera,
-    ) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, camera: &Camera) -> Result<(), wgpu::SurfaceError> {
         // TODO: next required features
         // - support texture alpha (mostly for foliage, binary alpha, no blending needed?)
         // - some surfaces are supposed to be a blend between different textures (eg stone and dirt)
@@ -329,40 +335,27 @@ impl Renderer {
             bytemuck::cast_slice(&[camera_uniform]),
         );
 
-        // let pre_cull_draw_count = draw_commands.len();
+        if self.particles_instance_buffer.size()
+            < (self.draw_commands.particles.len() * std::mem::size_of::<ParticleInstance>()) as u64
+        {
+            self.particles_instance_buffer = create_particles_buffer(
+                &self.context.device,
+                self.draw_commands.particles.len() * 2,
+            );
+        }
+        self.context.queue.write_buffer(
+            &self.particles_instance_buffer,
+            0,
+            bytemuck::cast_slice(&self.draw_commands.particles),
+        );
+        let particles_count = self.draw_commands.particles.len() as u32;
+
         let frustum = Frustum::new(view_proj);
-        let mut culled_draw_commands = draw_commands
+        let culled_bitrees = self
+            .draw_commands
+            .bitrees
             .iter()
-            .filter(|draw| {
-                let Some(bounds) = &draw.bounds else {
-                    return true;
-                };
-
-                // TODO: transform bounds from local space to world space
-
-                match bounds {
-                    RenderableBounds::Box(bounding_box) => frustum.test_aabb(bounding_box),
-                    RenderableBounds::Sphere(bounding_sphere) => {
-                        frustum.test_sphere(bounding_sphere)
-                    }
-                }
-            })
-            .collect::<Vec<_>>();
-
-        // make sure everything that needs alpha blending is drawn last
-        // TODO: this sucks though, this value and the pipeline in use
-        // by the draw should be more closely tied so they cant be mismatched
-        culled_draw_commands.sort_unstable_by(|a, b| {
-            match (
-                a.renderable.needs_alpha_blending(),
-                b.renderable.needs_alpha_blending(),
-            ) {
-                (true, true) => Ordering::Equal,
-                (true, false) => Ordering::Greater,
-                (false, true) => Ordering::Less,
-                (false, false) => Ordering::Equal,
-            }
-        });
+            .filter(|draw| frustum.test_aabb(&draw.node.bounding_box));
 
         let surface_texture = self.surface.get_current_texture()?;
         let surface_view = surface_texture
@@ -407,83 +400,44 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-            // let mut draw_count = 0;
-            for draw in culled_draw_commands {
-                // draw_count += 1;
-                // TODO: this assumes that all pipelines use the same bind groups and does no sorting or batching
-
-                // render_pass.set_pipeline(&draw.model.pipeline);
-                // render_pass.set_bind_group(0, &draw.model.vertex_buffer_bind_group, &[]);
-                // render_pass.set_bind_group(1, &draw.model.vertex_layout_uniform_bind_group, &[]);
-                // render_pass.set_bind_group(2, &draw.model.texture.bind_group, &[]);
-                // render_pass
-                //     .set_index_buffer(draw.model.index_buffer.slice(..), draw.model.index_format);
-
-                // let mvp = projection * view * draw.transform;
-                // render_pass.set_push_constants(
-                //     wgpu::ShaderStages::VERTEX,
-                //     0,
-                //     bytemuck::cast_slice(&[mvp]),
-                // );
-
-                // render_pass.draw_indexed(
-                //     draw.model.start_index..draw.model.start_index + draw.model.index_count,
-                //     draw.model.base_vertex as i32,
-                //     0..1,
-                // );
-
-                match &draw.renderable {
-                    Renderable::Model(model) => todo!(),
-                    Renderable::BiTreeNode(bitree_node) => {
-                        render_pass.set_pipeline(&self.render_deferred_effect_pipeline.pipeline);
-                        render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
-                        render_pass.set_bind_group(
-                            1,
-                            &bitree_node.tree.vertex_buffer_bind_group,
-                            &[],
-                        );
-                        render_pass.set_bind_group(
-                            2,
-                            &bitree_node.tree.vertex_layout_uniform_bind_group,
-                            &[],
-                        );
-                        render_pass.set_bind_group(3, &bitree_node.tree.texture_bind_group, &[]);
-                        render_pass.set_push_constants(
-                            wgpu::ShaderStages::VERTEX,
-                            0,
-                            bytemuck::cast_slice(&[draw.transform]),
-                        );
-                        render_pass.set_index_buffer(
-                            bitree_node.tree.index_buffer.slice(..),
-                            bitree_node.tree.index_format,
-                        );
-                        render_pass.draw_indexed(
-                            bitree_node.start_index
-                                ..bitree_node.start_index + bitree_node.index_count,
-                            0,
-                            0..1,
-                        );
-                    }
-                    Renderable::VisualEffect(vfx) => {
-                        render_pass.set_pipeline(&self.particles_pipeline.pipeline);
-                        render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
-                        render_pass.set_bind_group(
-                            1,
-                            &self.particles_pipeline.textures_bind_group,
-                            &[],
-                        );
-                        render_pass.set_vertex_buffer(0, vfx.instance_buffer.slice(..));
-                        render_pass.set_push_constants(
-                            wgpu::ShaderStages::VERTEX,
-                            0,
-                            bytemuck::cast_slice(&[draw.transform]),
-                        );
-                        render_pass.draw(0..4, 0..vfx.instance_count);
-                    }
-                }
+            // render bitrees
+            render_pass.set_pipeline(&self.render_deferred_effect_pipeline.pipeline);
+            render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
+            for draw in culled_bitrees {
+                render_pass.set_bind_group(1, &draw.node.tree.vertex_buffer_bind_group, &[]);
+                render_pass.set_bind_group(
+                    2,
+                    &draw.node.tree.vertex_layout_uniform_bind_group,
+                    &[],
+                );
+                render_pass.set_bind_group(3, &draw.node.tree.texture_bind_group, &[]);
+                render_pass.set_push_constants(
+                    wgpu::ShaderStages::VERTEX,
+                    0,
+                    bytemuck::cast_slice(&[draw.transform]),
+                );
+                render_pass.set_index_buffer(
+                    draw.node.tree.index_buffer.slice(..),
+                    draw.node.tree.index_format,
+                );
+                render_pass.draw_indexed(
+                    draw.node.start_index..draw.node.start_index + draw.node.index_count,
+                    0,
+                    0..1,
+                );
             }
 
-            // dbg!(pre_cull_draw_count, draw_count);
+            // render particles
+            render_pass.set_pipeline(&self.particles_pipeline.pipeline);
+            render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.particles_pipeline.textures_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.particles_instance_buffer.slice(..));
+            render_pass.set_push_constants(
+                wgpu::ShaderStages::VERTEX,
+                0,
+                bytemuck::cast_slice(&[Mat4::IDENTITY]),
+            );
+            render_pass.draw(0..4, 0..particles_count);
         }
 
         self.context.queue.submit([command_encoder.finish()]);
@@ -512,6 +466,11 @@ impl Renderer {
         let size = self.window.inner_size();
         self.resize(size.width, size.height);
     }
+
+    pub fn new_draw_commands(&mut self) -> &mut DrawCommands {
+        self.draw_commands.clear();
+        &mut self.draw_commands
+    }
 }
 
 #[repr(C)]
@@ -524,30 +483,38 @@ pub struct CameraUniform {
     pub up: [f32; 4],
 }
 
-pub enum Renderable {
-    Model(scene::ModelNode),
-    BiTreeNode(scene::BiTreeNode),
-    VisualEffect(VisualEffectNodeRenderable),
+pub struct DrawCommands {
+    bitrees: Vec<BiTreeDrawCommand>,
+    particles: Vec<ParticleInstance>,
 }
 
-impl Renderable {
-    pub fn needs_alpha_blending(&self) -> bool {
-        match self {
-            Renderable::Model(_) => false,
-            Renderable::BiTreeNode(_) => false,
-            Renderable::VisualEffect(_) => true,
+impl DrawCommands {
+    pub fn new() -> Self {
+        DrawCommands {
+            bitrees: Vec::new(),
+            particles: Vec::new(),
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.bitrees.clear();
+        self.particles.clear();
+    }
+
+    pub fn add_bitree(&mut self, bitree: scene::BiTreeNode, transform: Mat4) {
+        self.bitrees.push(BiTreeDrawCommand {
+            node: bitree,
+            transform,
+        });
+    }
+
+    pub fn add_particles(&mut self, particles: impl IntoIterator<Item = ParticleInstance>) {
+        self.particles.extend(particles);
     }
 }
 
-pub enum RenderableBounds {
-    Box(BoundingBox),
-    Sphere(BoundingSphere),
-}
-
-pub struct DrawCommand {
-    pub renderable: Renderable,
-    pub bounds: Option<RenderableBounds>,
+pub struct BiTreeDrawCommand {
+    pub node: scene::BiTreeNode,
     pub transform: Mat4,
 }
 
@@ -568,5 +535,15 @@ pub fn create_depth_texture(
         format: wgpu::TextureFormat::Depth32Float,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
+    })
+}
+
+pub fn create_particles_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+    log::debug!("created particles buffer with capacity {capacity}");
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Particles Instance Buffer"),
+        size: (capacity * std::mem::size_of::<ParticleInstance>()) as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
     })
 }

@@ -4,12 +4,14 @@ struct InstanceInput {
     @location(2) size: f32,
     @location(3) rotation: f32,
     @location(4) sprite: u32,
+    @location(5) additive: i32,
 };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec3<f32>,
     @location(1) sheet_index: u32,
+    @location(2) additive: i32,
 };
 
 struct CameraUniform {
@@ -27,8 +29,6 @@ var <uniform> camera: CameraUniform;
 var texture_sampler: sampler;
 @group(1) @binding(1)
 var textures: binding_array<texture_3d<f32>>;
-
-var<push_constant> model: mat4x4<f32>;
 
 @vertex
 fn vs_main(in: InstanceInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
@@ -63,9 +63,10 @@ fn vs_main(in: InstanceInput, @builtin(vertex_index) vertex_index: u32) -> Verte
     var sprite_uv = vec2<f32>(f32(sprite_x) / 8.0, f32(sprite_y) / 8.0) + (corner_uv / 8.0);
 
     var out: VertexOutput;
-    out.clip_position = camera.view_proj * model * vec4<f32>(aligned_corner, 1.0);
+    out.clip_position = camera.view_proj * vec4<f32>(aligned_corner, 1.0);
     out.tex_coords = vec3<f32>(sprite_uv, in.lifetime);
     out.sheet_index = sheet_index;
+    out.additive = in.additive;
     return out;
 }
 
@@ -77,5 +78,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    return sample;
+    var color = sample.rgb * sample.a;
+    color = 1 - exp2(color * -1.0);
+
+    // 1.0 if additive, else 1.0 - a
+    var alpha = select(1.0 - sample.a, 1.0, in.additive != 0);
+
+    return vec4<f32>(color, alpha);
 }

@@ -244,6 +244,7 @@ impl VisualEffectNode {
                             size_start,
                             size_end,
                             sprite: emitter.sprite,
+                            additive: emitter.additive_blend,
                         };
 
                         self.particles.push(particle);
@@ -269,6 +270,7 @@ impl VisualEffectNode {
                 size: lerp(particle.size_start, particle.size_end, lifetime) * 2.0,
                 rotation: particle.rotation,
                 sprite: particle.sprite as u32,
+                additive: if particle.additive { 1 } else { 0 },
             }
         });
 
@@ -286,6 +288,7 @@ pub struct Particle {
     pub size_start: f32,
     pub size_end: f32,
     pub sprite: u8,
+    pub additive: bool,
 }
 
 impl Particle {

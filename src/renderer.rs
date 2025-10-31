@@ -432,11 +432,6 @@ impl Renderer {
             render_pass.set_bind_group(0, &self.camera_uniform_bind_group, &[]);
             render_pass.set_bind_group(1, &self.particles_pipeline.textures_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.particles_instance_buffer.slice(..));
-            render_pass.set_push_constants(
-                wgpu::ShaderStages::VERTEX,
-                0,
-                bytemuck::cast_slice(&[Mat4::IDENTITY]),
-            );
             render_pass.draw(0..4, 0..particles_count);
         }
 

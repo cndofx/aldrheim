@@ -5,6 +5,7 @@ use crate::asset_manager::vfx::{SpreadType, VisualEffectProperty};
 #[derive(Debug)]
 pub struct ContinuousEmitter {
     pub name: String, // names arent unique so these cant be used as a hashmap key
+    pub additive_blend: bool,
     pub spread_type: SpreadType,
     pub spread_arc_horizontal_angle_degrees: VisualEffectProperty,
     pub spread_arc_horizontal_angle_dist: VisualEffectProperty,
@@ -46,6 +47,7 @@ impl ContinuousEmitter {
             anyhow::anyhow!("expected <ContinuousEmitter> node to have a 'name' attribute")
         })?;
 
+        let mut additive_blend: Option<bool> = None;
         let mut spread_type: Option<SpreadType> = None;
         let mut spread_arc_horizontal_angle_degrees: Option<VisualEffectProperty> = None;
         let mut spread_arc_horizontal_angle_dist: Option<VisualEffectProperty> = None;
@@ -89,6 +91,20 @@ impl ContinuousEmitter {
                 .map(|attr| attr.value());
 
             match child_name {
+                "BlendMode" => {
+                    let value = child_value.ok_or_else(|| {
+                        anyhow::anyhow!("expected <{child_name}> node to have a 'value' attribute")
+                    })?;
+                    match value.to_lowercase().as_str() {
+                        "additive" => additive_blend = Some(true),
+                        "alpha" => additive_blend = Some(false),
+                        _ => {
+                            anyhow::bail!(
+                                "expected <{child_name}> node 'value' attribute to be 'alpha' or 'additive', got '{value}'"
+                            );
+                        }
+                    }
+                }
                 "SpreadType" => {
                     let value = child_value.ok_or_else(|| {
                         anyhow::anyhow!("expected <{child_name}> node to have a 'value' attribute")
@@ -212,6 +228,10 @@ impl ContinuousEmitter {
             }
         }
 
+        let Some(additive_blend) = additive_blend else {
+            anyhow::bail!("expected <ContinuousEmitter> node to have a <BlendMode> child");
+        };
+
         let Some(spread_type) = spread_type else {
             anyhow::bail!("expected <ContinuousEmitter> node to have a <SpreadType> child");
         };
@@ -269,6 +289,7 @@ impl ContinuousEmitter {
 
         Ok(ContinuousEmitter {
             name: name.into(),
+            additive_blend,
             spread_type,
             spread_arc_horizontal_angle_degrees,
             spread_arc_horizontal_angle_dist,

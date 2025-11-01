@@ -1,11 +1,10 @@
 use anyhow::Context;
 use roxmltree::{Document, Node};
 
-use crate::{asset_manager::vfx::continuous_emitter::ContinuousEmitter, scene::vfx::lerp};
+use crate::{asset_manager::vfx::emitter::ParticleEmitter, scene::vfx::lerp};
 
-pub mod continuous_emitter;
+pub mod emitter;
 
-#[derive(Debug)]
 pub struct VisualEffectAsset {
     pub kind: VisualEffectKind,
     pub duration: f32,
@@ -69,17 +68,8 @@ impl VisualEffectAsset {
         let mut emitters: Vec<ParticleEmitter> = Vec::new();
 
         for child in root.children().filter(|n| n.is_element()) {
-            let child_name = child.tag_name().name();
-
-            match child_name {
-                "ContinuousEmitter" => {
-                    let emitter = ContinuousEmitter::read(child)?;
-                    emitters.push(ParticleEmitter::Continuous(emitter));
-                }
-                _ => {
-                    log::error!("unsupported <Effect> child node <{child_name}>");
-                }
-            }
+            let emitter = ParticleEmitter::read(child)?;
+            emitters.push(emitter);
         }
 
         Ok(VisualEffectAsset {
@@ -100,14 +90,14 @@ pub enum VisualEffectKind {
 
 #[derive(Debug)]
 pub struct VisualEffectPropertyKeyframe {
-    pub time: u32,
+    pub time: i32, // TODO: apparently times can be negative? what am i supposed to do with those?
     pub value: f32,
 }
 
 impl VisualEffectPropertyKeyframe {
     pub fn read(node: Node) -> anyhow::Result<Self> {
         let time = if let Some(time_attr) = node.attribute("time") {
-            time_attr.parse::<u32>().with_context(|| {
+            time_attr.parse::<i32>().with_context(|| {
                 format!("unable to parse vfx property keyframe time from '{time_attr}'")
             })?
         } else {
@@ -121,8 +111,6 @@ impl VisualEffectPropertyKeyframe {
         } else {
             anyhow::bail!("expected <Key> node to have a 'value' attribute");
         };
-
-        // let time = (time as f32) / (keyframes_per_second as f32);
 
         Ok(VisualEffectPropertyKeyframe { time, value })
     }
@@ -178,7 +166,7 @@ impl VisualEffectProperty {
             VisualEffectProperty::Animated(keyframes) => {
                 assert!(!keyframes.is_empty());
 
-                let frame_time = (current_time * fps as f32) as u32;
+                let frame_time = (current_time * fps as f32) as i32;
 
                 let first = keyframes.first().unwrap();
                 if frame_time <= first.time {
@@ -203,11 +191,6 @@ impl VisualEffectProperty {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub enum ParticleEmitter {
-    Continuous(ContinuousEmitter),
 }
 
 #[derive(Debug)]

@@ -7,7 +7,7 @@ use glam::{Mat4, Quat, Vec3};
 use rand::Rng;
 
 use crate::{
-    asset_manager::vfx::{ParticleEmitter, SpreadType, VisualEffectAsset},
+    asset_manager::vfx::{SpreadType, VisualEffectAsset, emitter::ParticleEmitterKind},
     renderer::{DrawCommands, pipelines::particles::ParticleInstance},
 };
 
@@ -63,258 +63,253 @@ impl VisualEffectNode {
 
         // spawn new particles
         for (emitter_i, emitter) in self.effect.emitters.iter().enumerate() {
-            match emitter {
-                ParticleEmitter::Continuous(emitter) => {
-                    let particles_per_second = emitter
-                        .particles_per_second
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let particles_to_emit =
-                        (particles_per_second * self.emit_timers[emitter_i]) as i32;
-                    if particles_to_emit < 1 {
-                        continue;
-                    } else {
-                        self.emit_timers[emitter_i] = 0.0;
-                    }
-
-                    let position_x = emitter
-                        .position_x
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let position_y = emitter
-                        .position_y
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let position_z = emitter
-                        .position_z
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let position = Vec3::new(position_x, position_y, position_z);
-
-                    let position_offset_x = emitter
-                        .position_offset_x
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let position_offset_y = emitter
-                        .position_offset_y
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let position_offset_z = emitter
-                        .position_offset_z
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let velocity_min = emitter
-                        .velocity_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let velocity_max = emitter
-                        .velocity_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let velocity_dist = emitter
-                        .velocity_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let drag = emitter
-                        .drag
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let gravity = emitter
-                        .gravity
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let rotation_degrees_min = emitter
-                        .rotation_degrees_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let rotation_degrees_max = emitter
-                        .rotation_degrees_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let rotation_speed_degrees_min = emitter
-                        .rotation_speed_degrees_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let rotation_speed_degrees_max = emitter
-                        .rotation_speed_degrees_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let rotation_ccw_chance = emitter
-                        .rotation_ccw_chance
-                        .interpolate(self.animation_timer, self.animation_fps)
-                        / 100.0; // ranges from 0..100, change to 0..1
-
-                    let size_start_min = emitter
-                        .size_start_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let size_start_max = emitter
-                        .size_start_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let size_start_dist = emitter
-                        .size_start_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let size_end_min = emitter
-                        .size_end_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let size_end_max = emitter
-                        .size_end_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let size_end_dist = emitter
-                        .size_end_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let lifetime_min = emitter
-                        .lifetime_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let lifetime_max = emitter
-                        .lifetime_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let lifetime_dist = emitter
-                        .lifetime_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let spread_arc_horizontal_angle_radians = emitter
-                        .spread_arc_horizontal_angle_degrees
-                        .interpolate(self.animation_timer, self.animation_fps)
-                        .to_radians();
-                    let spread_arc_horizontal_angle_dist = emitter
-                        .spread_arc_horizontal_angle_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let spread_arc_vertical_angle_radians_min = emitter
-                        .spread_arc_vertical_angle_degrees_min
-                        .interpolate(self.animation_timer, self.animation_fps)
-                        .to_radians();
-                    let spread_arc_vertical_angle_radians_max = emitter
-                        .spread_arc_vertical_angle_degrees_max
-                        .interpolate(self.animation_timer, self.animation_fps)
-                        .to_radians();
-                    let spread_arc_vertical_angle_dist = emitter
-                        .spread_arc_vertical_angle_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let spread_cone_angle_radians = emitter
-                        .spread_cone_angle_degrees
-                        .interpolate(self.animation_timer, self.animation_fps)
-                        .to_radians();
-                    let spread_cone_angle_dist = emitter
-                        .spread_cone_angle_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let hue_min = emitter
-                        .hue_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let hue_max = emitter
-                        .hue_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let hue_dist = emitter
-                        .hue_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let saturation_min = emitter
-                        .saturation_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let saturation_max = emitter
-                        .saturation_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let saturation_dist = emitter
-                        .saturation_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let value_min = emitter
-                        .value_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let value_max = emitter
-                        .value_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let value_dist = emitter
-                        .value_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    let alpha_min = emitter
-                        .alpha_min
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let alpha_max = emitter
-                        .alpha_max
-                        .interpolate(self.animation_timer, self.animation_fps);
-                    let alpha_dist = emitter
-                        .alpha_dist
-                        .interpolate(self.animation_timer, self.animation_fps);
-
-                    for _ in 0..particles_to_emit {
-                        let size_start =
-                            random_distribution(size_start_min, size_start_max, size_start_dist);
-                        let size_end =
-                            random_distribution(size_end_min, size_end_max, size_end_dist);
-                        let lifetime =
-                            random_distribution(lifetime_min, lifetime_max, lifetime_dist);
-
-                        let velocity =
-                            random_distribution(velocity_min, velocity_max, velocity_dist);
-                        let velocity = match emitter.spread_type {
-                            SpreadType::Arc => {
-                                random_direction_in_arc(
-                                    rotation,
-                                    spread_arc_horizontal_angle_radians,
-                                    spread_arc_horizontal_angle_dist,
-                                    spread_arc_vertical_angle_radians_min,
-                                    spread_arc_vertical_angle_radians_max,
-                                    spread_arc_vertical_angle_dist,
-                                ) * velocity
-                            }
-                            SpreadType::Cone => {
-                                random_direction_in_cone(
-                                    rotation,
-                                    spread_cone_angle_radians,
-                                    spread_cone_angle_dist,
-                                ) * velocity
-                            }
-                        };
-                        // TODO: handle relative velocity
-
-                        let rotation_radians =
-                            random_distribution(rotation_degrees_min, rotation_degrees_max, 1.0)
-                                .to_radians();
-
-                        let rotation_speed_radians = (random_distribution(
-                            rotation_speed_degrees_min,
-                            rotation_speed_degrees_max,
-                            1.0,
-                        ) * random_sign(rotation_ccw_chance))
-                        .to_radians();
-
-                        let position_offset_x =
-                            position_offset_x * (rng.random::<f32>() * 2.0 - 1.0);
-                        let position_offset_y =
-                            position_offset_y * (rng.random::<f32>() * 2.0 - 1.0);
-                        let position_offset_z =
-                            position_offset_z * (rng.random::<f32>() * 2.0 - 1.0);
-                        let position_offset =
-                            Vec3::new(position_offset_x, position_offset_y, position_offset_z);
-
-                        let hue_rotation =
-                            (random_distribution(hue_min, hue_max, hue_dist) * 0.159155 + 0.5)
-                                .fract()
-                                * TAU
-                                - PI;
-                        let saturation =
-                            random_distribution(saturation_min, saturation_max, saturation_dist);
-                        let value = random_distribution(value_min, value_max, value_dist);
-                        let alpha = random_distribution(alpha_min, alpha_max, alpha_dist);
-
-                        let particle = Particle {
-                            position: translation + position + position_offset,
-                            velocity,
-                            drag,
-                            gravity,
-                            rotation: rotation_radians,
-                            rotation_speed: rotation_speed_radians,
-                            lifetime,
-                            lifetime_remaining: lifetime,
-                            size_start,
-                            size_end,
-                            sprite: emitter.sprite,
-                            additive: emitter.additive_blend,
-                            hsv: emitter.hsv,
-                            colorize: emitter.colorize,
-                            hue_rotation,
-                            saturation,
-                            value,
-                            alpha,
-                        };
-
-                        self.particles.push(particle);
-                    }
+            let particles_per_second = match &emitter.kind {
+                ParticleEmitterKind::Continuous(continuous) => continuous
+                    .particles_per_second
+                    .interpolate(self.animation_timer, self.animation_fps),
+                ParticleEmitterKind::Pulse(pulse) => {
+                    // TODO
+                    // log::warn!("skipping unimplemented pulse emitter");
+                    continue;
                 }
+            };
+
+            let particles_to_emit = (particles_per_second * self.emit_timers[emitter_i]) as i32;
+            if particles_to_emit < 1 {
+                continue;
+            } else {
+                self.emit_timers[emitter_i] = 0.0;
+            }
+
+            let position_x = emitter
+                .position_x
+                .interpolate(self.animation_timer, self.animation_fps);
+            let position_y = emitter
+                .position_y
+                .interpolate(self.animation_timer, self.animation_fps);
+            let position_z = emitter
+                .position_z
+                .interpolate(self.animation_timer, self.animation_fps);
+            let position = Vec3::new(position_x, position_y, position_z);
+
+            let position_offset_x = emitter
+                .position_offset_x
+                .interpolate(self.animation_timer, self.animation_fps);
+            let position_offset_y = emitter
+                .position_offset_y
+                .interpolate(self.animation_timer, self.animation_fps);
+            let position_offset_z = emitter
+                .position_offset_z
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let velocity_min = emitter
+                .velocity_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let velocity_max = emitter
+                .velocity_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let velocity_dist = emitter
+                .velocity_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let drag = emitter
+                .drag
+                .interpolate(self.animation_timer, self.animation_fps);
+            let gravity = emitter
+                .gravity
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let rotation_degrees_min = emitter
+                .rotation_degrees_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let rotation_degrees_max = emitter
+                .rotation_degrees_max
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let rotation_speed_degrees_min = emitter
+                .rotation_speed_degrees_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let rotation_speed_degrees_max = emitter
+                .rotation_speed_degrees_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let rotation_ccw_chance = emitter
+                .rotation_ccw_chance
+                .interpolate(self.animation_timer, self.animation_fps)
+                / 100.0; // ranges from 0..100, change to 0..1
+
+            let size_start_min = emitter
+                .size_start_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let size_start_max = emitter
+                .size_start_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let size_start_dist = emitter
+                .size_start_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let size_end_min = emitter
+                .size_end_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let size_end_max = emitter
+                .size_end_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let size_end_dist = emitter
+                .size_end_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let lifetime_min = emitter
+                .lifetime_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let lifetime_max = emitter
+                .lifetime_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let lifetime_dist = emitter
+                .lifetime_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let spread_arc_horizontal_angle_radians = emitter
+                .spread_arc_horizontal_angle_degrees
+                .interpolate(self.animation_timer, self.animation_fps)
+                .to_radians();
+            let spread_arc_horizontal_angle_dist = emitter
+                .spread_arc_horizontal_angle_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+            let spread_arc_vertical_angle_radians_min = emitter
+                .spread_arc_vertical_angle_degrees_min
+                .interpolate(self.animation_timer, self.animation_fps)
+                .to_radians();
+            let spread_arc_vertical_angle_radians_max = emitter
+                .spread_arc_vertical_angle_degrees_max
+                .interpolate(self.animation_timer, self.animation_fps)
+                .to_radians();
+            let spread_arc_vertical_angle_dist = emitter
+                .spread_arc_vertical_angle_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let spread_cone_angle_radians = emitter
+                .spread_cone_angle_degrees
+                .interpolate(self.animation_timer, self.animation_fps)
+                .to_radians();
+            let spread_cone_angle_dist = emitter
+                .spread_cone_angle_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let hue_min = emitter
+                .hue_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let hue_max = emitter
+                .hue_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let hue_dist = emitter
+                .hue_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let saturation_min = emitter
+                .saturation_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let saturation_max = emitter
+                .saturation_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let saturation_dist = emitter
+                .saturation_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let value_min = emitter
+                .value_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let value_max = emitter
+                .value_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let value_dist = emitter
+                .value_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            let alpha_min = emitter
+                .alpha_min
+                .interpolate(self.animation_timer, self.animation_fps);
+            let alpha_max = emitter
+                .alpha_max
+                .interpolate(self.animation_timer, self.animation_fps);
+            let alpha_dist = emitter
+                .alpha_dist
+                .interpolate(self.animation_timer, self.animation_fps);
+
+            for _ in 0..particles_to_emit {
+                let size_start =
+                    random_distribution(size_start_min, size_start_max, size_start_dist);
+                let size_end = random_distribution(size_end_min, size_end_max, size_end_dist);
+                let lifetime = random_distribution(lifetime_min, lifetime_max, lifetime_dist);
+
+                let velocity = random_distribution(velocity_min, velocity_max, velocity_dist);
+                let velocity = match emitter.spread_type {
+                    SpreadType::Arc => {
+                        random_direction_in_arc(
+                            rotation,
+                            spread_arc_horizontal_angle_radians,
+                            spread_arc_horizontal_angle_dist,
+                            spread_arc_vertical_angle_radians_min,
+                            spread_arc_vertical_angle_radians_max,
+                            spread_arc_vertical_angle_dist,
+                        ) * velocity
+                    }
+                    SpreadType::Cone => {
+                        random_direction_in_cone(
+                            rotation,
+                            spread_cone_angle_radians,
+                            spread_cone_angle_dist,
+                        ) * velocity
+                    }
+                };
+                // TODO: handle relative velocity
+
+                let rotation_radians =
+                    random_distribution(rotation_degrees_min, rotation_degrees_max, 1.0)
+                        .to_radians();
+
+                let rotation_speed_radians = (random_distribution(
+                    rotation_speed_degrees_min,
+                    rotation_speed_degrees_max,
+                    1.0,
+                ) * random_sign(rotation_ccw_chance))
+                .to_radians();
+
+                let position_offset_x = position_offset_x * (rng.random::<f32>() * 2.0 - 1.0);
+                let position_offset_y = position_offset_y * (rng.random::<f32>() * 2.0 - 1.0);
+                let position_offset_z = position_offset_z * (rng.random::<f32>() * 2.0 - 1.0);
+                let position_offset =
+                    Vec3::new(position_offset_x, position_offset_y, position_offset_z);
+
+                let hue_rotation =
+                    (random_distribution(hue_min, hue_max, hue_dist) * 0.159155 + 0.5).fract()
+                        * TAU
+                        - PI;
+                let saturation =
+                    random_distribution(saturation_min, saturation_max, saturation_dist);
+                let value = random_distribution(value_min, value_max, value_dist);
+                let alpha = random_distribution(alpha_min, alpha_max, alpha_dist);
+
+                let particle = Particle {
+                    position: translation + position + position_offset,
+                    velocity,
+                    drag,
+                    gravity,
+                    rotation: rotation_radians,
+                    rotation_speed: rotation_speed_radians,
+                    lifetime,
+                    lifetime_remaining: lifetime,
+                    size_start,
+                    size_end,
+                    sprite: emitter.sprite,
+                    additive: emitter.additive_blend,
+                    hsv: emitter.hsv,
+                    colorize: emitter.colorize,
+                    hue_rotation,
+                    saturation,
+                    value,
+                    alpha,
+                };
+
+                self.particles.push(particle);
             }
         }
     }

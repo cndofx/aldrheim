@@ -11,7 +11,10 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     asset_manager::vfx::VisualEffectAsset,
-    renderer::{RenderContext, pipelines::render_deferred_effect::RenderDeferredEffectUniform},
+    renderer::{
+        RenderContext,
+        pipelines::{render_deferred_effect::RenderDeferredEffectUniform, skymap::SkymapUniform},
+    },
     scene::{self, SceneNode, SceneNodeKind, vfx::VisualEffectNode},
     xnb::{self, BiTreeNode, Xnb, XnbContent, asset::XnbAsset},
 };
@@ -146,9 +149,30 @@ impl AssetManager {
 
         let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let bind_group = self
+            .render_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Texture2D Bind Group"),
+                layout: &self.render_context.texture_2d_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(
+                            &self.render_context.linear_sampler,
+                        ),
+                    },
+                ],
+            });
+
         Ok(TextureAsset {
             texture: wgpu_texture,
             view,
+            bind_group,
         })
     }
 
@@ -203,9 +227,30 @@ impl AssetManager {
 
         let view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let bind_group = self
+            .render_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Texture2D Bind Group"),
+                layout: &self.render_context.texture_3d_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(
+                            &self.render_context.linear_sampler,
+                        ),
+                    },
+                ],
+            });
+
         Ok(TextureAsset {
             texture: wgpu_texture,
             view,
+            bind_group,
         })
     }
 
@@ -623,6 +668,7 @@ impl AssetManager {
 pub struct TextureAsset {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
+    pub bind_group: wgpu::BindGroup,
 }
 
 pub struct ModelAsset {

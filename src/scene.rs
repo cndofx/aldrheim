@@ -3,10 +3,10 @@ use std::rc::Rc;
 use glam::{Mat4, Vec3};
 
 use crate::{
-    asset_manager::{BiTreeAsset, ModelAsset},
+    asset_manager::{BiTreeAsset, ModelAsset, TextureAsset},
     renderer::{DrawCommands, camera::Camera},
     scene::vfx::VisualEffectNode,
-    xnb::asset::model::BoundingBox,
+    xnb::asset::{color::Color, model::BoundingBox},
 };
 
 pub mod level;
@@ -16,6 +16,9 @@ pub mod vfx;
 pub struct Scene {
     pub root_node: SceneNode,
     pub camera: Camera,
+
+    pub indoors: bool,
+    pub skymap: Option<Skymap>,
 }
 
 impl Scene {
@@ -36,6 +39,8 @@ impl Scene {
                 z_near: 0.1,
                 z_far: 10000.0,
             },
+            indoors: false,
+            skymap: None,
         }
     }
 
@@ -51,6 +56,8 @@ impl Scene {
         let mut transform_stack = Vec::new();
         transform_stack.push(Mat4::IDENTITY);
         self.root_node.render(draw_commands, &mut transform_stack);
+
+        draw_commands.skymap = self.skymap.clone();
     }
 }
 
@@ -124,4 +131,10 @@ pub struct BiTreeNode {
     pub start_index: u32,
     pub index_count: u32,
     pub bounding_box: BoundingBox,
+}
+
+#[derive(Clone)]
+pub struct Skymap {
+    pub texture: Rc<TextureAsset>,
+    pub color: Color,
 }

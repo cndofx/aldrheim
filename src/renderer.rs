@@ -10,9 +10,10 @@ use crate::{
         pipelines::{
             particles::{ParticleInstance, ParticlesPipeline},
             render_deferred_effect::RenderDeferredEffectPipeline,
+            skymap::{SkymapPipeline, SkymapUniform},
         },
     },
-    scene,
+    scene::{self, Skymap},
 };
 
 pub mod camera;
@@ -27,7 +28,9 @@ pub struct RenderContext {
 
     pub vertex_storage_buffer_bind_group_layout: wgpu::BindGroupLayout,
     pub uniform_buffer_bind_group_layout: wgpu::BindGroupLayout,
+    pub texture_2d_bind_group_layout: wgpu::BindGroupLayout,
     pub texture_2d_2x_bind_group_layout: wgpu::BindGroupLayout,
+    pub texture_3d_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl RenderContext {
@@ -130,6 +133,29 @@ impl RenderContext {
                 }],
             });
 
+        let texture_2d_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture2D Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let texture_2d_2x_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Texture2D 2x Bind Group Layout"),
@@ -156,6 +182,29 @@ impl RenderContext {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let texture_3d_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture3D Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
@@ -205,7 +254,10 @@ impl RenderContext {
             placeholder_texture_view,
             vertex_storage_buffer_bind_group_layout,
             uniform_buffer_bind_group_layout,
+            texture_2d_bind_group_layout,
             texture_2d_2x_bind_group_layout,
+            texture_3d_bind_group_layout,
+            // skymap_bind_group_layout,
         };
         Ok((ctx, surface, surface_config))
     }
@@ -220,11 +272,14 @@ pub struct Renderer {
 
     particles_pipeline: ParticlesPipeline,
     render_deferred_effect_pipeline: RenderDeferredEffectPipeline,
+    skymap_pipeline: SkymapPipeline,
 
     depth_texture: wgpu::Texture,
 
     camera_uniform_buffer: wgpu::Buffer,
     camera_uniform_bind_group: wgpu::BindGroup,
+    skymap_uniform_buffer: wgpu::Buffer,
+    skymap_uniform_bind_group: wgpu::BindGroup,
 
     particles_instance_buffer: wgpu::Buffer,
 
@@ -258,8 +313,27 @@ impl Renderer {
                     }],
                 });
 
+        let skymap_uniform_buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Skymap Uniform Buffer"),
+            size: std::mem::size_of::<SkymapUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let skymap_uniform_bind_group =
+            context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Skymap Uniform Bind Group"),
+                    layout: &context.uniform_buffer_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: skymap_uniform_buffer.as_entire_binding(),
+                    }],
+                });
+
         let particles_pipeline = ParticlesPipeline::new(&context, asset_manager)?;
         let render_deferred_effect_pipeline = RenderDeferredEffectPipeline::new(&context)?;
+        let skymap_pipeline = SkymapPipeline::new(&context)?;
 
         let depth_texture = create_depth_texture(&context.device, &surface_config);
 
@@ -274,11 +348,14 @@ impl Renderer {
 
             camera_uniform_buffer,
             camera_uniform_bind_group,
+            skymap_uniform_buffer,
+            skymap_uniform_bind_group,
 
             depth_texture,
 
             particles_pipeline,
             render_deferred_effect_pipeline,
+            skymap_pipeline,
 
             particles_instance_buffer,
             draw_commands: DrawCommands::new(),
@@ -317,6 +394,23 @@ impl Renderer {
             0,
             bytemuck::cast_slice(&[camera_uniform]),
         );
+
+        if let Some(skymap) = &self.draw_commands.skymap {
+            let skymap_uniform = SkymapUniform {
+                texture_w: skymap.texture.texture.width() as f32,
+                texture_h: skymap.texture.texture.height() as f32,
+                target_w: self.surface_config.width as f32,
+                target_h: self.surface_config.height as f32,
+                color_r: skymap.color.r,
+                color_g: skymap.color.g,
+                color_b: skymap.color.b,
+            };
+            self.context.queue.write_buffer(
+                &self.skymap_uniform_buffer,
+                0,
+                bytemuck::cast_slice(&[skymap_uniform]),
+            );
+        }
 
         if self.particles_instance_buffer.size()
             < (self.draw_commands.particles.len() * std::mem::size_of::<ParticleInstance>()) as u64
@@ -382,6 +476,14 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
+            // render skymap
+            if let Some(skymap) = &self.draw_commands.skymap {
+                render_pass.set_pipeline(&self.skymap_pipeline.pipeline);
+                render_pass.set_bind_group(0, &self.skymap_uniform_bind_group, &[]);
+                render_pass.set_bind_group(1, &skymap.texture.bind_group, &[]);
+                render_pass.draw(0..3, 0..1);
+            }
 
             // render bitrees
             render_pass.set_pipeline(&self.render_deferred_effect_pipeline.pipeline);
@@ -462,19 +564,22 @@ pub struct CameraUniform {
 }
 
 pub struct DrawCommands {
-    bitrees: Vec<BiTreeDrawCommand>,
-    particles: Vec<ParticleInstance>,
+    pub skymap: Option<Skymap>,
+    pub bitrees: Vec<BiTreeDrawCommand>,
+    pub particles: Vec<ParticleInstance>,
 }
 
 impl DrawCommands {
     pub fn new() -> Self {
         DrawCommands {
+            skymap: None,
             bitrees: Vec::new(),
             particles: Vec::new(),
         }
     }
 
     pub fn clear(&mut self) {
+        self.skymap = None;
         self.bitrees.clear();
         self.particles.clear();
     }
